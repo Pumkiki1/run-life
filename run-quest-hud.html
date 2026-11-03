@@ -1,0 +1,2704 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Run Quest HUD</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Mali:wght@500;600;700&family=Sriracha&family=Itim&display=swap">
+<style>
+/* Layout: a 9:16 phone frame that always fits the screen. Everything sits inside the TikTok/Reels safe zone:
+   stats on top, a big cartoon park map in the middle, mini screen + run-together crew at the bottom.
+   Look: hand-drawn sticker doodles, wobbly ink lines, pastel fills. */
+:root {
+  --ink: #5B4570;
+  --ink-soft: #8A7A9C;
+  --bg: #F3EEFB;
+  --paper: #FFFDF8;
+  --line: #E6DCF3;
+  --pink: #FFB3CF; --butter: #FFE27A; --peach: #FFC9A3;
+  --mint: #A8EBD0; --mint-2: #3FBF8F; --lav: #CDBEFF; --lav-2: #9D86E8;
+  --bad: #FF6F7F;
+  --font-display: "Mali", "Itim", ui-rounded, system-ui, sans-serif;
+  --font-hand: "Sriracha", "Mali", ui-rounded, system-ui, sans-serif;
+  --font-body: "Itim", "Mali", ui-rounded, system-ui, sans-serif;
+  color-scheme: light;
+}
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+* { box-sizing: border-box; }
+.app { min-height: 100%; display: flex; gap: 20px; align-items: center; justify-content: center; padding-block: 16px; }
+
+/* ================= Stage ================= */
+.stage {
+  --st: 13cqw; --sb: 30cqw; --sl: 4cqw; --sr: 14cqw;
+  container-type: size; position: relative; overflow: hidden; flex: none;
+  width: min(100%, calc((100vh - 32px) * 9 / 16)); aspect-ratio: 9 / 16;
+  border-radius: 22px; background: linear-gradient(180deg, #CFEAFF 0%, #EAF6FF 45%, #FFF1E4 100%); user-select: none;
+  box-shadow: 0 10px 30px rgba(91, 69, 112, .2);
+}
+@supports (height: 100dvh) { .stage { width: min(100%, calc((100dvh - 32px) * 9 / 16)); } }
+.stage.no-safe { --st: 4cqw; --sb: 4cqw; --sl: 4cqw; --sr: 4cqw; }
+.stage[data-bg="green"] { background: #00B140; }
+.stage[data-bg="blue"]  { background: #0047BB; }
+.stitch { position: absolute; inset: 1.8cqw; width: calc(100% - 3.6cqw); height: calc(100% - 3.6cqw); z-index: 1; pointer-events: none; overflow: visible; }
+.stitch rect { fill: none; stroke: #fff; stroke-width: 2.4; stroke-dasharray: 7 7; stroke-linecap: round; opacity: .9; }
+.stage.no-frame .stitch { display: none; }
+
+/* Safe-zone guide (preview only) */
+.guide { position: absolute; inset: 0; z-index: 15; pointer-events: none; display: none; }
+.stage.show-guide .guide { display: block; }
+.guide div { position: absolute; background: repeating-linear-gradient(45deg, rgba(255, 90, 110, .28) 0 2cqw, rgba(255, 90, 110, .12) 2cqw 4cqw); border: .4cqw dashed #E0475E; display: grid; place-items: center; font-family: var(--font-hand); font-size: 3cqw; color: #B02A40; text-align: center; }
+.g-top { left: 0; right: 0; top: 0; height: 7%; }
+.g-right { right: 0; width: 13%; top: 42%; height: 42%; }
+.g-bottom { left: 0; right: 0; bottom: 0; height: 16%; }
+
+/* ---------- Safe area grid ---------- */
+.safe { position: absolute; z-index: 3; top: var(--st); bottom: var(--sb); left: var(--sl); right: var(--sr); display: grid; grid-template-rows: auto minmax(0, 1fr) 30cqw; gap: 2.4cqw; }
+.paper { background: radial-gradient(circle, #F1E6FF 16%, transparent 18%) 0 0 / 2.6cqw 2.6cqw, var(--paper); box-shadow: .8cqw 1cqw 0 rgba(91, 69, 112, .22); }
+.sketch { position: absolute; inset: 0; border: .55cqw solid var(--ink); border-radius: inherit; filter: url(#wobble); pointer-events: none; z-index: 2; }
+.tape { position: absolute; left: 50%; top: -1.7cqw; width: 12cqw; height: 3.4cqw; transform: translateX(-50%) rotate(-4deg); background: repeating-linear-gradient(90deg, rgba(168, 235, 208, .9) 0 1.4cqw, rgba(214, 247, 233, .9) 1.4cqw 2.8cqw); border-radius: .6cqw; z-index: 3; }
+.tape.pink { background: repeating-linear-gradient(90deg, rgba(255, 179, 207, .9) 0 1.4cqw, rgba(255, 220, 233, .9) 1.4cqw 2.8cqw); }
+.label { font-family: var(--font-hand); font-size: 2.8cqw; line-height: 1.1; }
+.face { width: var(--fs, 7cqw); height: var(--fs, 7cqw); border-radius: 50%; flex: none; overflow: hidden; display: grid; place-items: center; font-size: calc(var(--fs, 7cqw) * .6); background: #fff; border: .45cqw solid var(--c, var(--ink)); }
+.face img { width: 100%; height: 100%; object-fit: cover; }
+
+/* Row 1: stats */
+.hud { position: relative; border-radius: 4cqw; padding: 2cqw 2.4cqw 2.2cqw; display: grid; gap: 1.3cqw; font-family: var(--font-display); }
+.hrow1 { display: flex; align-items: center; gap: 1.6cqw; }
+.faces { display: flex; }
+.faces .face { --fs: 7cqw; margin-left: -2.2cqw; }
+.faces .face:first-child { margin-left: 0; }
+.ttl { flex: 1; min-width: 0; display: grid; gap: .4cqw; line-height: 1.1; }
+.ttl b { font-size: 3.3cqw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meta { display: flex; gap: .8cqw; font-size: 2cqw; font-weight: 700; white-space: nowrap; }
+.meta span { padding: .2cqw 1.2cqw; border-radius: 99px; border: .35cqw solid var(--ink); background: #fff; }
+.meta .phase { background: var(--mint); }
+.meta .phase.swap { animation: chip .5s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes chip { from { transform: scale(.3) rotate(-10deg); } }
+.lapPill { flex: none; font-weight: 700; font-size: 2.6cqw; background: var(--butter); border: .4cqw solid var(--ink); border-radius: 99px; padding: .4cqw 1.6cqw; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lapPill.pop { animation: vpop .6s cubic-bezier(.3, 1.6, .5, 1); }
+.hrow2 { display: grid; grid-template-columns: auto 1fr; gap: 2cqw; align-items: center; }
+.dist { line-height: 1; display: flex; align-items: baseline; gap: .8cqw; }
+.dist b { font-size: 7.4cqw; font-variant-numeric: tabular-nums; -webkit-text-stroke: .22cqw var(--ink); }
+.dist span { font-size: 2.8cqw; font-weight: 700; }
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: .8cqw; }
+.tile { background: #fff; border: .38cqw solid var(--ink); border-radius: 2cqw; padding: .6cqw .3cqw .7cqw; text-align: center; line-height: 1.1; min-width: 0; }
+.tile .k { font-size: 1.8cqw; color: var(--ink-soft); font-weight: 700; white-space: nowrap; }
+.tile .v { font-size: 2.7cqw; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tile .v.pop { animation: vpop .5s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes vpop { 40% { transform: scale(1.35); } }
+.beat { display: inline-block; animation: beat var(--beat, .8s) ease-in-out infinite; }
+@keyframes beat { 0%, 100% { transform: scale(1); } 15% { transform: scale(1.3); } 30% { transform: scale(.95); } }
+.goal { height: 1.8cqw; border-radius: 99px; background: #fff; border: .35cqw solid var(--ink); overflow: hidden; }
+.goal i { display: block; height: 100%; width: 0; background-image: repeating-linear-gradient(-45deg, var(--pink) 0 1cqw, #FFDCE9 1cqw 2cqw); background-size: 200% 100%; animation: stripes 1.4s linear infinite; }
+@keyframes stripes { to { background-position: -2.83cqw 0; } }
+
+/* Row 2: map */
+.mapwrap { position: relative; border-radius: 4.5cqw; min-height: 0; }
+.mapwrap svg.map { position: absolute; inset: 1.4cqw; width: calc(100% - 2.8cqw); height: calc(100% - 2.8cqw); border-radius: 3cqw; display: block; background: #F4F0E6; }
+.mapwrap .mapborder { position: absolute; inset: 1.4cqw; border: .45cqw solid var(--ink); border-radius: 3cqw; pointer-events: none; z-index: 1; }
+.mapwrap.tracing svg.map { cursor: crosshair; }
+.mapwrap.tracing .mapborder { border-style: dashed; border-color: var(--lav-2); }
+.char .cb { transform-box: fill-box; }
+.char.go .cb { animation: hop .28s ease-in-out infinite alternate; }
+@keyframes hop { to { transform: translateY(-.7px); } }
+.char .lg { transform-box: fill-box; transform-origin: 50% 0; }
+.char.go .lg1 { animation: leg .28s ease-in-out infinite alternate; }
+.char.go .lg2 { animation: leg .28s ease-in-out infinite alternate-reverse; }
+@keyframes leg { from { transform: rotate(-30deg); } to { transform: rotate(30deg); } }
+.mascot { position: absolute; right: 2.4cqw; bottom: 2.4cqw; width: 11cqw; height: 11cqw; z-index: 4; animation: mbob 1.6s ease-in-out infinite; }
+.mascot svg { width: 100%; height: 100%; overflow: visible; }
+.mascot.squish svg { animation: squish .5s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes mbob { 50% { transform: translateY(-1cqw) rotate(-3deg); } }
+@keyframes squish { 30% { transform: scale(1.2, .8); } 60% { transform: scale(.9, 1.1); } }
+.mascot [data-part] { display: none; }
+.mascot[data-mood="idle"] [data-part~="idle"], .mascot[data-mood="happy"] [data-part~="happy"],
+.mascot[data-mood="tired"] [data-part~="tired"], .mascot[data-mood="star"] [data-part~="star"] { display: inline; }
+.stage.no-mascot .mascot { display: none; }
+
+/* Row 3: mini screen + crew */
+.bottom { display: grid; grid-template-columns: 1.45fr 1fr; gap: 2.4cqw; min-height: 0; }
+.pip { position: relative; border-radius: 4cqw; }
+.pip .screen { position: absolute; inset: 1.3cqw; border-radius: 2.8cqw; border: .45cqw solid var(--ink); overflow: hidden; background: #DCEFFF; }
+.stage[data-bg="green"] .pip .screen { background: #00B140; }
+.stage[data-bg="blue"] .pip .screen { background: #0047BB; }
+.pip video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: none; }
+.stage.has-pipvid .pip video { display: block; }
+.pip .tagl { position: absolute; z-index: 3; left: 2.6cqw; top: -2.2cqw; background: #fff; border: .4cqw solid var(--ink); border-radius: 99px; padding: .2cqw 1.6cqw .4cqw; display: flex; align-items: center; gap: .9cqw; transform: rotate(-3deg); }
+.rec-dot { width: 1.6cqw; height: 1.6cqw; border-radius: 50%; background: var(--bad); border: .3cqw solid var(--ink); animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: .25; } }
+.ph { position: absolute; inset: 0; display: none; }
+.ph-live { place-items: center; text-align: center; font-family: var(--font-hand); font-size: 3cqw; color: var(--ink-soft); padding: 2cqw; line-height: 1.3; }
+body[data-mode="live"] .stage[data-bg="sky"]:not(.has-pipvid) .ph-live { display: grid; }
+body[data-mode="demo"] .ph-demo { display: block; }
+.ph-demo { background: linear-gradient(180deg, #FFD6B8 0%, #FFE9D6 42%, #9EDB8C 42%, #7CC46B 100%); }
+.ph-demo .e { position: absolute; line-height: 1; transform: translate(-50%, -50%); }
+.ph-demo .mini-run { position: absolute; top: 58%; font-size: 9cqw; line-height: 1; animation: minirun 2.2s linear infinite; }
+@keyframes minirun { from { left: 105%; } to { left: -20%; } }
+.bob { animation: bob .45s ease-in-out infinite alternate; }
+@keyframes bob { to { margin-top: -1.4cqw; } }
+.crew { position: relative; border-radius: 4cqw; padding: 1.8cqw 1.6cqw 1.6cqw; display: grid; grid-template-rows: auto 1fr auto; gap: .8cqw; font-family: var(--font-display); min-width: 0; }
+.crew .rows { display: grid; gap: .6cqw; align-content: start; min-height: 0; overflow: hidden; }
+.crow { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: .9cqw; background: #fff; border: .35cqw solid var(--ink); border-radius: 2cqw; padding: .4cqw .8cqw .4cqw .5cqw; --fs: 4.8cqw; min-width: 0; }
+.crow .nm { min-width: 0; line-height: 1.1; }
+.crow .nm b { display: block; font-size: 2.3cqw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crow .nm span { font-size: 1.9cqw; color: var(--ink-soft); font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.crew.tight .crow { --fs: 4cqw; padding-block: .2cqw; }
+.crew .total { font-size: 2.3cqw; font-weight: 700; text-align: center; background: var(--butter); border: .35cqw solid var(--ink); border-radius: 99px; padding: .3cqw 1cqw; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* ---------- Floating effects ---------- */
+.fx { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
+.p { position: absolute; left: calc(var(--x) + var(--ox)); top: calc(var(--y) + var(--oy)); width: var(--s); height: var(--s); animation: fly var(--t) cubic-bezier(.2, .7, .3, 1) forwards; }
+.p svg { width: 100%; height: 100%; display: block; overflow: visible; }
+@keyframes fly { 0% { transform: translate(-50%, -50%) scale(.2); opacity: 0; } 15% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; } 100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.85) rotate(var(--r)); opacity: 0; } }
+.bubble { position: absolute; z-index: 7; left: calc(var(--sl) + (100% - var(--sl) - var(--sr)) / 2); bottom: calc(var(--sb) + 34cqw); max-width: 74cqw; transform: translateX(-50%); background: #fff; font-family: var(--font-hand); font-size: 3.8cqw; text-align: center; padding: 1.3cqw 3.6cqw 1.7cqw; border-radius: 5cqw; border: .5cqw solid var(--ink); box-shadow: .7cqw .9cqw 0 rgba(91, 69, 112, .22); animation: bubble var(--life, 2.6s) ease forwards; white-space: nowrap; }
+.bubble::before, .bubble::after { content: ""; position: absolute; left: 50%; transform: translateX(-50%); border-style: solid; border-color: transparent; }
+.bubble::before { top: 100%; border-width: 2.2cqw 1.7cqw 0; border-top-color: var(--ink); }
+.bubble::after { top: calc(100% - .8cqw); border-width: 1.7cqw 1.2cqw 0; border-top-color: #fff; }
+@keyframes bubble { 0% { transform: translateX(-50%) scale(0); } 10% { transform: translateX(-50%) scale(1.1); } 16% { transform: translateX(-50%) scale(1); } 88% { opacity: 1; } 100% { opacity: 0; } }
+.sticker { position: absolute; font-family: var(--font-hand); font-size: 6cqw; line-height: 1; white-space: nowrap; color: var(--c, var(--butter)); -webkit-text-stroke: 1cqw var(--ink); paint-order: stroke fill; filter: drop-shadow(.6cqw .8cqw 0 rgba(91, 69, 112, .25)); animation: stick 1.9s cubic-bezier(.3, 1.6, .5, 1) forwards; }
+@keyframes stick { 0% { transform: rotate(var(--rot)) scale(0); opacity: 0; } 14% { transform: rotate(var(--rot)) scale(1.2); opacity: 1; } 22% { transform: rotate(var(--rot)) scale(1); } 40% { transform: rotate(calc(var(--rot) * -1)); } 58% { transform: rotate(var(--rot)); } 85% { opacity: 1; } 100% { transform: rotate(var(--rot)) scale(.9) translateY(-3cqw); opacity: 0; } }
+.banner { position: absolute; left: calc(var(--sl) + (100% - var(--sl) - var(--sr)) / 2); top: 47%; white-space: nowrap; text-align: center; font-family: var(--font-display); font-weight: 700; font-size: var(--fs, 8.5cqw); line-height: 1.05; color: var(--c, #fff); -webkit-text-stroke: 1.2cqw var(--ink); paint-order: stroke fill; filter: drop-shadow(.7cqw .9cqw 0 rgba(91, 69, 112, .28)); animation: bannerPop var(--life, 2s) cubic-bezier(.3, 1.4, .5, 1) forwards; }
+.banner small { display: block; font-family: var(--font-hand); font-weight: 400; font-size: .45em; }
+@keyframes bannerPop { 0% { transform: translate(-50%, -50%) scale(0) rotate(-12deg); opacity: 0; } 15% { transform: translate(-50%, -50%) scale(1.15) rotate(-2deg); opacity: 1; } 25% { transform: translate(-50%, -50%) scale(1) rotate(-4deg); } 85% { transform: translate(-50%, -50%) scale(1) rotate(-4deg); opacity: 1; } 100% { transform: translate(-50%, -80%) scale(.9) rotate(-4deg); opacity: 0; } }
+.zline { position: absolute; height: .7cqw; border-radius: 99px; background: var(--ink); opacity: .75; animation: zip .45s ease-out 4 both; }
+@keyframes zip { from { transform: translateX(var(--from)) scaleX(.2); opacity: 0; } 50% { opacity: .8; } to { transform: translateX(0) scaleX(1); opacity: 0; } }
+.ring { position: absolute; z-index: 7; right: calc(var(--sr) + 4cqw); top: calc(var(--st) + 30cqw); width: 20cqw; height: 20cqw; animation: popIn .5s cubic-bezier(.3, 1.6, .5, 1); }
+.ring svg { width: 100%; height: 100%; overflow: visible; }
+.ring .num { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; font-family: var(--font-hand); font-size: 6.4cqw; line-height: .9; color: #fff; -webkit-text-stroke: .9cqw var(--ink); paint-order: stroke fill; }
+.ring .num small { font-size: 2.8cqw; -webkit-text-stroke-width: .6cqw; }
+.ring.out { animation: popOut .4s ease forwards; }
+@keyframes popIn { from { transform: scale(.2) rotate(-30deg); opacity: 0; } }
+@keyframes popOut { to { transform: scale(.5); opacity: 0; } }
+.quest { position: absolute; z-index: 8; left: calc(var(--sl) + (100% - var(--sl) - var(--sr)) / 2); top: 47%; width: 62cqw; transform: translate(-50%, -50%); border: .55cqw solid var(--ink); border-radius: 4.5cqw; overflow: hidden; text-align: center; font-family: var(--font-display); animation: questPop var(--life, 2.6s) cubic-bezier(.3, 1.4, .5, 1) forwards; }
+.quest .hd { font-family: var(--font-hand); font-size: 3.4cqw; background: var(--butter); border-bottom: .45cqw solid var(--ink); padding: .9cqw; }
+.quest .bd { padding: 2cqw 2.8cqw 2.6cqw; font-size: 4.1cqw; font-weight: 700; line-height: 1.35; }
+.quest .bd small { display: block; font-size: 2.7cqw; color: var(--ink-soft); }
+@keyframes questPop { 0% { transform: translate(-50%, -50%) scale(0) rotate(8deg); opacity: 0; } 14% { transform: translate(-50%, -50%) scale(1.08) rotate(-2deg); opacity: 1; } 22% { transform: translate(-50%, -50%) scale(1) rotate(0); } 88% { opacity: 1; } 100% { transform: translate(-50%, -70%) scale(.9); opacity: 0; } }
+.medal { position: absolute; z-index: 8; right: calc(var(--sr) + 3cqw); top: calc(var(--st) + 30cqw); width: 26cqw; border: .5cqw solid var(--ink); border-radius: 4cqw; padding: 1.2cqw 1.4cqw 1.6cqw; text-align: center; font-family: var(--font-display); transform-origin: top right; animation: medal 2s cubic-bezier(.3, 1.6, .5, 1) forwards; }
+.medal .ic { font-size: 7cqw; line-height: 1.1; }
+.medal .t { font-family: var(--font-hand); font-size: 3.3cqw; }
+.medal .s { font-size: 2.4cqw; font-weight: 700; color: var(--ink-soft); }
+@keyframes medal { 0% { transform: scale(.2) rotate(15deg); opacity: 0; } 15% { transform: scale(1.08); opacity: 1; } 22% { transform: scale(1); } 85% { opacity: 1; } 100% { transform: translateX(8cqw); opacity: 0; } }
+
+/* Summary (sits over the map) */
+.summary { position: absolute; z-index: 5; inset: 0; padding: 3cqw 3cqw 2.6cqw; border-radius: 4.5cqw; font-family: var(--font-display); display: grid; grid-template-columns: 17cqw 1fr; column-gap: 2.6cqw; row-gap: 1.6cqw; align-content: start; align-items: center; overflow: hidden; animation: sumUp .55s cubic-bezier(.3, 1.6, .5, 1); }
+.summary .badge { position: relative; width: 17cqw; height: 17cqw; }
+.summary .badge svg.flower { width: 100%; height: 100%; animation: spinIn .9s .2s cubic-bezier(.3, 1.6, .5, 1) both; }
+.summary .badge b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 9.5cqw; color: #fff; -webkit-text-stroke: 1cqw var(--ink); paint-order: stroke fill; animation: stamp .7s .45s cubic-bezier(.3, 1.8, .5, 1) both; }
+.summary .crown { position: absolute; left: 50%; top: -3.6cqw; width: 8cqw; transform: translateX(-50%) rotate(-8deg); animation: stamp .6s .8s cubic-bezier(.3, 1.8, .5, 1) both; }
+@keyframes spinIn { from { transform: rotate(-120deg) scale(0); } }
+@keyframes stamp { from { transform: scale(2.2) rotate(-20deg); opacity: 0; } }
+@keyframes sumUp { from { transform: translateY(20cqw) scale(.9); opacity: 0; } }
+.summary .info { display: grid; gap: .5cqw; min-width: 0; }
+.summary .ttl2 { font-family: var(--font-hand); font-size: 3.9cqw; line-height: 1.15; }
+.summary .ln { font-size: 2.7cqw; font-weight: 700; font-variant-numeric: tabular-nums; }
+.summary .food { font-family: var(--font-hand); font-size: 2.8cqw; color: var(--ink-soft); }
+.team { grid-column: 1 / -1; display: grid; gap: .7cqw; }
+.team .tr { display: grid; grid-template-columns: auto 1fr auto; gap: 1.4cqw; align-items: center; background: #fff; border: .35cqw solid var(--ink); border-radius: 2.2cqw; padding: .5cqw 1.4cqw .5cqw .6cqw; --fs: 5cqw; font-size: 2.5cqw; font-weight: 700; font-variant-numeric: tabular-nums; animation: stamp .45s both; }
+.team .tr b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.team .tr span { color: var(--ink-soft); white-space: nowrap; }
+.splits { grid-column: 1 / -1; display: grid; gap: .5cqw; }
+.splits .lbl { font-size: 2.2cqw; font-weight: 700; color: var(--ink-soft); }
+.bars { display: flex; align-items: flex-end; gap: 1.1cqw; height: 9cqw; }
+.bar { flex: 1; display: grid; align-content: end; justify-items: center; gap: .3cqw; height: 100%; }
+.bar i { display: block; width: 100%; border: .38cqw solid var(--ink); border-radius: 1.3cqw 1.3cqw .5cqw .5cqw; background: var(--c); transform-origin: bottom; animation: grow .6s cubic-bezier(.3, 1.4, .5, 1) both; }
+.bar span { font-size: 1.8cqw; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+@keyframes grow { from { transform: scaleY(0); } }
+
+/* Snack stops */
+.foodpop { animation: fpop 2.2s cubic-bezier(.3, 1.6, .5, 1) forwards; transform-box: fill-box; transform-origin: 50% 100%; }
+@keyframes fpop { 0% { transform: scale(0); opacity: 0; } 12% { transform: scale(1.15); opacity: 1; } 20% { transform: scale(1); } 85% { opacity: 1; } 100% { transform: translateY(-3px); opacity: 0; } }
+.cart .awn { animation: wave 1.2s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: 50% 0; }
+@keyframes wave { to { transform: scaleY(1.12); } }
+.say { animation: sayPop .32s cubic-bezier(.3, 1.6, .5, 1); transform-box: fill-box; transform-origin: 50% 100%; }
+@keyframes sayPop { from { transform: scale(.2); opacity: 0; } }
+.char.bye .cb { animation: byebye 1.5s ease-in forwards !important; }
+.char.bye > ellipse { opacity: 0; transition: opacity .6s; }
+@keyframes byebye { 0% { transform: none; } 25% { transform: translateY(-2px) rotate(-10deg); } 45% { transform: translateY(0) rotate(10deg); } 100% { transform: translate(7px, -5px) scale(.2); opacity: 0; } }
+.calbal { grid-column: 1 / -1; font-family: var(--font-hand); font-size: 2.9cqw; line-height: 1.3; background: #FFF4DE; border: .35cqw solid var(--ink); border-radius: 2.2cqw; padding: .6cqw 1.6cqw .8cqw; }
+
+/* Sample-mode cover + progress */
+.cover { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; align-content: center; gap: 4cqw; background: rgba(60, 40, 80, .42); border: 0; cursor: pointer; font-family: var(--font-display); color: #fff; }
+.cover .play { width: 22cqw; height: 22cqw; border-radius: 50%; background: #fff; color: var(--ink); display: grid; place-items: center; font-size: 9cqw; padding-left: 2cqw; border: .7cqw solid var(--ink); box-shadow: 1cqw 1.2cqw 0 rgba(0, 0, 0, .2); transition: transform .15s; }
+.cover:hover .play { transform: scale(1.06) rotate(-4deg); }
+.cover:focus-visible .play { outline: 1cqw solid var(--lav-2); outline-offset: 1.5cqw; }
+.cover .lbl { font-family: var(--font-hand); font-size: 5.6cqw; -webkit-text-stroke: 1cqw var(--ink); paint-order: stroke fill; text-align: center; }
+.cover .lbl small { display: block; font-size: 3.4cqw; }
+.progress { position: absolute; left: 0; right: 0; bottom: 0; height: 1.2cqw; background: rgba(255, 255, 255, .35); z-index: 19; }
+.progress i { display: block; height: 100%; width: 0; background: #fff; }
+body[data-mode="live"] .cover, body[data-mode="live"] .progress { display: none; }
+
+/* ================= Panel ================= */
+.panel { width: 370px; max-height: calc(100vh - 32px); overflow: auto; flex: none; background: var(--paper); border-radius: 18px; padding: 18px; display: grid; gap: 16px; align-content: start; box-shadow: 0 6px 20px rgba(91, 69, 112, .1); border: 2px solid var(--line); }
+.panel h1 { margin: 0; font-family: var(--font-display); font-size: 22px; text-wrap: balance; }
+.panel .sub { margin: 4px 0 0; color: var(--ink-soft); font-size: 14px; line-height: 1.5; }
+.panel h2 { margin: 0; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); font-family: var(--font-display); }
+.panel section { display: grid; gap: 10px; }
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; background: #F3EDFC; border-radius: 14px; }
+.tab, .seg button { font: inherit; font-family: var(--font-display); font-weight: 700; font-size: 14px; color: var(--ink-soft); background: transparent; border: 0; border-radius: 10px; padding: 9px 6px; cursor: pointer; }
+.tab[aria-selected="true"], .seg button[aria-pressed="true"] { background: #fff; color: var(--ink); box-shadow: 0 2px 0 var(--line); }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; background: #F3EDFC; border-radius: 14px; }
+body[data-mode="live"] .demo-only, body[data-mode="demo"] .live-only { display: none; }
+.live-only, .demo-only { display: grid; gap: 18px; }
+.grid5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.btn { font: inherit; color: var(--ink); background: #F7F3FD; border: 2px solid var(--line); border-radius: 12px; padding: 8px 3px 6px; cursor: pointer; display: grid; gap: 2px; justify-items: center; line-height: 1.2; transition: transform .1s, background .15s; }
+.btn:hover { background: #EFE7FC; }
+.btn:active { transform: translateY(2px); }
+.btn:focus-visible, .tab:focus-visible, .seg button:focus-visible, .replay:focus-visible, .apply:focus-visible, .pick:focus-within, .gpxbtn:focus-within, .xbtn:focus-visible, .field input:focus-visible, .field select:focus-visible, .fr input:focus-visible { outline: 3px solid var(--lav-2); outline-offset: 2px; }
+.btn .e2 { font-size: 21px; }
+.btn .l { font-size: 12.5px; }
+.btn kbd, .tips kbd, .sb kbd { font-family: var(--font-display); font-size: 11px; color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; }
+.field { display: grid; gap: 4px; font-size: 13px; color: var(--ink-soft); }
+.field input, .field select, .fr input[type="text"], .fr input[type="number"], .fr select { font: inherit; font-size: 15px; color: var(--ink); background: #FBF9FE; border: 2px solid var(--line); border-radius: 10px; padding: 7px 10px; width: 100%; min-width: 0; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.checks { display: grid; gap: 6px; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink); }
+.status { margin: 0; font-size: 13px; line-height: 1.5; padding: 9px 11px; border-radius: 10px; background: #EAF8F1; color: #2C7A5C; }
+.status.warn { background: #FFF1E0; color: #9A5A1C; }
+.status.err { background: #FFE6E9; color: #B23A4A; }
+.how { margin: 0; font-size: 13px; color: var(--ink-soft); line-height: 1.55; }
+.apply { font: inherit; font-family: var(--font-display); font-weight: 700; font-size: 14px; color: var(--ink); background: #fff; border: 2px solid var(--line); border-radius: 10px; padding: 8px 12px; cursor: pointer; }
+.apply.on { background: var(--lav); border-color: var(--lav-2); }
+.or { text-align: center; font-size: 12px; color: var(--ink-soft); }
+.fr { display: grid; grid-template-columns: 44px 1fr auto 32px; gap: 6px; align-items: center; }
+.fr.me { grid-template-columns: 44px 1fr; }
+.fr.stop, .frhead2 { grid-template-columns: 58px 1fr 52px 58px 36px 32px; }
+.lock { font: inherit; width: 36px; height: 36px; border-radius: 10px; border: 2px solid var(--line); background: #fff; cursor: pointer; font-size: 15px; }
+.lock[aria-pressed="true"] { background: #FFE6E9; border-color: #F3B4BE; }
+.lock:focus-visible { outline: 3px solid var(--lav-2); outline-offset: 2px; }
+.fitem { display: grid; gap: 6px; padding: 8px; border: 2px solid var(--line); border-radius: 12px; background: #FDFBFF; }
+.fr2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.fr2 input, .fr2 select { font: inherit; font-size: 14px; color: var(--ink); background: #fff; border: 2px solid var(--line); border-radius: 10px; padding: 6px 8px; width: 100%; min-width: 0; }
+.fr2 input:focus-visible, .fr2 select:focus-visible { outline: 3px solid var(--lav-2); outline-offset: 2px; }
+.fr.stop select { padding-inline: 4px; font-size: 18px; }
+.fr.stop input { padding-inline: 7px; }
+.frhead2 { display: grid; gap: 6px; font-size: 12px; color: var(--ink-soft); }
+.pick { position: relative; width: 44px; height: 44px; border-radius: 50%; border: 3px solid var(--c, var(--line)); display: grid; place-items: center; font-size: 22px; overflow: hidden; cursor: pointer; background: #fff; }
+.pick img { width: 100%; height: 100%; object-fit: cover; }
+.pick input, .gpxbtn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.gpxbtn { position: relative; font-family: var(--font-display); font-weight: 700; font-size: 12px; padding: 7px 9px; border-radius: 10px; border: 2px solid var(--line); background: #fff; cursor: pointer; white-space: nowrap; overflow: hidden; }
+.gpxbtn.ok { background: #EAF8F1; border-color: #ABE6CF; color: #2C7A5C; }
+.xbtn { font: inherit; width: 32px; height: 32px; border-radius: 10px; border: 2px solid var(--line); background: #fff; color: var(--ink-soft); cursor: pointer; }
+.tips { margin: 0; padding-left: 18px; font-size: 13px; color: var(--ink-soft); line-height: 1.6; }
+.sb { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.sb li { display: grid; grid-template-columns: 42px 1fr auto; gap: 10px; align-items: start; padding: 9px 10px; border-radius: 12px; border: 2px solid transparent; transition: background .2s, border-color .2s; }
+.sb li.now { background: #F6F2FD; border-color: var(--lav-2); }
+.sb li.past { opacity: .55; }
+.sb .t { font-family: var(--font-display); font-weight: 700; font-size: 13px; color: var(--ink-soft); font-variant-numeric: tabular-nums; padding-top: 1px; }
+.sb .h { font-weight: 700; font-size: 15px; font-family: var(--font-display); }
+.sb .d { font-size: 13px; color: var(--ink-soft); line-height: 1.45; margin-top: 2px; }
+.replay { font: inherit; font-family: var(--font-display); font-weight: 700; font-size: 15px; color: #fff; background: var(--ink); border: 0; border-radius: 12px; padding: 10px 14px; cursor: pointer; }
+.note { margin: 0; font-size: 13px; color: var(--ink-soft); line-height: 1.5; background: #FFF4DE; border-radius: 10px; padding: 10px 12px; }
+
+/* Quick Reel */
+.reel-wrap { position: absolute; inset: 0; z-index: 10; display: none; background: #FFF6EC; }
+.reel-wrap canvas { width: 100%; height: 100%; display: block; }
+body[data-mode="reel"] .reel-wrap { display: block; }
+body[data-mode="reel"] .safe, body[data-mode="reel"] .fx, body[data-mode="reel"] .stitch, body[data-mode="reel"] .cover, body[data-mode="reel"] .progress { visibility: hidden; }
+.reel-only { display: none; gap: 18px; }
+body[data-mode="reel"] .reel-only, body[data-mode="reel"] .live-only { display: grid; }
+body[data-mode="reel"] .live-only .lv, body[data-mode="reel"] .demo-only { display: none; }
+.seg3 { grid-template-columns: repeat(3, 1fr); }
+.scrub { display: flex; align-items: center; gap: 10px; }
+.scrub input { flex: 1; min-width: 0; accent-color: var(--lav-2); }
+.scrub span { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ink-soft); white-space: nowrap; }
+.apply.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+.apply:disabled, .btn:disabled { opacity: .5; cursor: progress; }
+.reel-out video { width: 100%; max-height: 360px; border-radius: 12px; background: #000; display: block; }
+
+body.rec { padding: 0; }
+body.rec .app { padding: 0; }
+body.rec .panel { display: none; }
+body.rec .stage { border-radius: 0; box-shadow: none; width: min(100vw, calc(100vh * 9 / 16)); }
+
+@media (max-width: 820px) {
+  .app { flex-direction: column; }
+  .panel { width: 100%; max-width: 440px; max-height: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .goal i, .mascot, .bob, .beat, .rec-dot, .mini-run, .char.go .cb, .char.go .lg { animation: none !important; }
+}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="wobble"><feTurbulence id="wobbleNoise" type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="1"/><feDisplacementMap in="SourceGraphic" scale="3.2"/></filter>
+</svg>
+
+<div class="app">
+  <div class="stage" id="stage" data-bg="sky">
+    <svg class="stitch" aria-hidden="true"><rect x="0" y="0" width="100%" height="100%" rx="22" filter="url(#wobble)"/></svg>
+    <div class="reel-wrap"><canvas id="reelCanvas" width="1080" height="1920" aria-label="พรีวิว Reel"></canvas></div>
+
+    <div class="safe" id="safe">
+      <!-- Row 1: stats -->
+      <div class="hud paper">
+        <div class="sketch"></div><div class="tape pink"></div>
+        <div class="hrow1">
+          <div class="faces" id="faces"></div>
+          <div class="ttl"><b id="hudTitle">RUN QUEST</b><div class="meta"><span class="phase" id="phase">👟 เตรียมตัว</span><span id="hudDate">—</span></div></div>
+          <span class="lapPill" id="lapPill">รอบ 1/3</span>
+        </div>
+        <div class="hrow2">
+          <div class="dist"><b id="vDist">0.00</b><span>กม.</span></div>
+          <div class="tiles">
+            <div class="tile"><div class="k">⏱️ เวลา</div><div class="v" id="vTime">0:00</div></div>
+            <div class="tile"><div class="k">⚡ เพซ</div><div class="v" id="vPace">–</div></div>
+            <div class="tile"><div class="k"><span class="beat" id="beat">❤️</span> bpm</div><div class="v" id="vHr">–</div></div>
+            <div class="tile"><div class="k">🔥 kcal</div><div class="v" id="vKcal">0</div></div>
+          </div>
+        </div>
+        <div class="goal"><i id="goalFill"></i></div>
+      </div>
+
+      <!-- Row 2: map -->
+      <div class="mapwrap paper" id="mapwrap">
+        <div class="sketch"></div><div class="tape"></div>
+        <svg class="map" id="mapSvg" aria-label="แผนที่การ์ตูนเส้นทางวิ่ง"></svg>
+        <div class="mapborder"></div>
+        <div class="mascot" id="mascot" data-mood="idle" aria-hidden="true"></div>
+      </div>
+
+      <!-- Row 3: mini screen + crew -->
+      <div class="bottom">
+        <div class="pip paper">
+          <div class="sketch"></div>
+          <div class="tagl"><span class="rec-dot"></span><span class="label">ตอนวิ่ง</span></div>
+          <div class="screen">
+            <video id="pipVid" muted loop playsinline></video>
+            <div class="ph ph-live">🎥 คลิปตอนวิ่ง<br>จะอยู่ตรงนี้</div>
+            <div class="ph ph-demo" id="phDemo"></div>
+          </div>
+        </div>
+        <div class="crew paper" id="crew">
+          <div class="sketch"></div><div class="tape"></div>
+          <div class="label">👯 ก๊วนเรา</div>
+          <div class="rows" id="crewRows"></div>
+          <div class="total" id="crewTotal">รวม 0.00 กม.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fx" id="fx"></div>
+    <div class="guide" aria-hidden="true"><div class="g-top">แถบบนของแอป</div><div class="g-right">ปุ่ม<br>ไลก์<br>แชร์</div><div class="g-bottom">แคปชั่น / ชื่อช่อง</div></div>
+    <div class="progress"><i id="prog"></i></div>
+    <button class="cover" id="cover" type="button" aria-label="เล่นตัวอย่างคลิป">
+      <span class="play">▶</span>
+      <span class="lbl">ดูตัวอย่างคลิปวิ่ง<small>ประมาณ 1 นาที · เปิดเสียงได้</small></span>
+    </button>
+  </div>
+
+  <aside class="panel" id="panel">
+    <div>
+      <h1>Run Quest HUD</h1>
+      <p class="sub">แผนที่การ์ตูนตรงกลาง ตัวละครหน้าคุณกับเพื่อนวิ่งไปด้วยกันเป็นรอบๆ ทุกอย่างอยู่ในพื้นที่ปลอดภัยของ TikTok/Reels</p>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab" id="tabLive" role="tab" type="button" aria-selected="true">🎬 โหมดอัดจริง</button>
+      <button class="tab" id="tabDemo" role="tab" type="button" aria-selected="false">▶ ดูตัวอย่าง</button>
+      <button class="tab" id="tabReel" role="tab" type="button" aria-selected="false">⚡ Quick Reel</button>
+    </div>
+
+    <div class="reel-only">
+      <section>
+        <h2>⚡ Quick Reel Generator</h2>
+        <div class="seg seg3" id="durSeg">
+          <button type="button" data-dur="15" aria-pressed="true">15 วิ</button>
+          <button type="button" data-dur="30" aria-pressed="false">30 วิ</button>
+          <button type="button" data-dur="60" aria-pressed="false">60 วิ</button>
+        </div>
+        <label class="field">เรื่องที่จะเล่า<select id="inPreset"></select></label>
+        <p class="how" id="presetHint"></p>
+      </section>
+
+      <section>
+        <h2>คลิปจริง</h2>
+        <label class="field">คลิปวิ่งจริง (ใช้ตอนเปิดคลิปและตอนแบ่งจอ)<input id="inReelVid" type="file" accept="video/*"></label>
+        <label class="field">คลิปตอนจบ เช่น เซลฟี่ยิ้ม (ไม่ใส่ก็ได้)<input id="inReelSelfie" type="file" accept="video/*"></label>
+        <div class="row3">
+          <label class="field">เริ่มที่ (วิ)<input id="inTrimS" type="number" min="0" step="0.1" value="0"></label>
+          <label class="field">จบที่ (วิ)<input id="inTrimE" type="number" min="0" step="0.1" placeholder="ทั้งคลิป"></label>
+          <label class="field">การครอป<select id="inFit"><option value="cover">เต็มกรอบ</option><option value="contain">เห็นทั้งภาพ</option></select></label>
+        </div>
+        <label class="check"><input id="inVidAudio" type="checkbox"> ใช้เสียงจากคลิปจริง</label>
+        <label class="field">ความดังเอฟเฟกต์<input id="inSfxVol" type="range" min="0" max="1" step="0.05" value="0.8"></label>
+        <p class="status" id="reelVidStatus" hidden></p>
+      </section>
+
+      <section>
+        <h2>พรีวิวและ Export</h2>
+        <div class="grid3">
+          <button class="btn" id="btnReelPlay" type="button"><span class="e2">▶</span><span class="l">พรีวิว</span></button>
+          <button class="btn" id="btnReelReplay" type="button"><span class="e2">↺</span><span class="l">เล่นใหม่</span></button>
+          <button class="btn" id="btnReelGuide" type="button"><span class="e2">📱</span><span class="l">จุดที่แอปบัง</span></button>
+        </div>
+        <div class="scrub"><input id="reelScrub" type="range" min="0" max="15" step="0.01" value="0" aria-label="เลื่อนดูทีละเฟรม"><span id="reelTime">0.00 / 15.00 วิ</span></div>
+        <p class="how" id="reelScene"></p>
+        <button class="apply primary" id="btnReelExport" type="button">🎬 Export Reel · 1080×1920 · 30fps</button>
+        <button class="apply" id="btnReelCover" type="button">🖼️ ดาวน์โหลดภาพปก</button>
+        <p class="status" id="reelStatus" hidden></p>
+        <div class="reel-out" id="reelOut" hidden></div>
+        <p class="how">ข้อมูลวิ่ง เพื่อน ร้าน และแผนที่ ตั้งค่าได้ในส่วนด้านล่าง ใช้ร่วมกับโหมดอัดจริง</p>
+      </section>
+    </div>
+
+    <div class="live-only">
+      <section>
+        <h2>1 · ข้อมูลวิ่งของคุณ</h2>
+        <p class="status warn" id="dataStatus">ตอนนี้ใช้ข้อมูลตัวอย่างอยู่ ใส่ไฟล์ GPX หรือกรอกเองด้านล่าง</p>
+        <label class="field">ไฟล์ GPX จาก Strava<input id="inGpx" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml"></label>
+        <p class="how">strava.com บนเบราว์เซอร์ → เปิดกิจกรรม → ปุ่ม ··· → Export GPX ไฟล์ถูกอ่านในเครื่องคุณเท่านั้น</p>
+        <div class="or">หรือกรอกเอง</div>
+        <div class="row3">
+          <label class="field">ระยะ (กม.)<input id="inDist" type="number" step="0.01" min="0.1" value="3.2"></label>
+          <label class="field">เวลา<input id="inTime" type="text" value="19:40"></label>
+          <label class="field">หัวใจเฉลี่ย<input id="inHr" type="number" min="60" max="220" placeholder="ไม่ใส่ก็ได้"></label>
+        </div>
+        <button class="apply" id="btnManual" type="button">ใช้ข้อมูลที่กรอก</button>
+      </section>
+
+      <section>
+        <h2>2 · คนที่วิ่งด้วยกัน</h2>
+        <div class="fr me">
+          <label class="pick" id="mePick" style="--c:#FF8FB8" aria-label="รูปหน้าของคุณ"><span>🐣</span><input id="inMeFace" type="file" accept="image/*"></label>
+          <label class="field">ชื่อคุณ<input id="inName" type="text" value="น้องมิว" maxlength="14"></label>
+        </div>
+        <div id="friendList" style="display:grid;gap:8px"></div>
+        <button class="apply" id="btnAddFriend" type="button">+ เพิ่มเพื่อนที่วิ่งด้วย</button>
+        <p class="how">แตะวงกลมเพื่อใส่รูปหน้า ใส่ GPX ของเพื่อนได้ ถ้าไม่ใส่จะวิ่งข้างๆ คุณ ถ้าเพื่อนขอกลับก่อน ใส่กิโลที่กลับกับเหตุผล จะมีฉากคุยบอกลาแล้วเดินออกจากแผนที่ 👋</p>
+      </section>
+
+      <section>
+        <h2>3 · สถานที่และจุดแวะกิน</h2>
+        <label class="field">วิ่งที่ไหน<input id="inPlace" type="text" value="สวนสุขใจ" maxlength="24" placeholder="เช่น สวนลุมพินี"></label>
+        <div class="frhead2"><span>ของกิน</span><span>ชื่อร้าน</span><span>กม.ที่</span><span>kcal</span><span>ร้าน</span><span></span></div>
+        <div id="stopList" style="display:grid;gap:8px"></div>
+        <div class="row2">
+          <button class="apply" id="btnAddStop" type="button">+ เพิ่มจุดแวะกิน</button>
+          <button class="apply" id="btnGpxStops" type="button" hidden>📍 ใช้จุดหยุดจาก GPX</button>
+        </div>
+        <p class="how">ตัวละครจะหยุดกินตรงกิโลที่ใส่ ช่วงนั้นไม่นับเวลา กด 🟢 ให้เป็น 🔒 ถ้าร้านไม่มา จะได้ฉากอดกิน 😭 ตอนจบมีสรุปว่ากินคืนไปเท่าไหร่</p>
+      </section>
+
+      <section>
+        <h2>4 · แผนที่</h2>
+        <div class="seg">
+          <button type="button" id="mapAuto" aria-pressed="true">🌳 การ์ตูนอัตโนมัติ</button>
+          <button type="button" id="mapImg" aria-pressed="false">🖼️ รูปของฉัน</button>
+        </div>
+        <div id="imgTools" hidden style="display:grid;gap:8px">
+          <label class="field">รูปแผนที่การ์ตูน<input id="inMapImg" type="file" accept="image/*"></label>
+          <div class="grid3">
+            <button class="apply" id="btnTrace" type="button">✏️ วาดทางวิ่ง</button>
+            <button class="apply" id="btnUndo" type="button">↶ ย้อน</button>
+            <button class="apply" id="btnClear" type="button">ล้าง</button>
+          </div>
+          <p class="how" id="traceHint">กด "วาดทางวิ่ง" แล้วคลิกไล่ไปตามทางวิ่งในรูปทีละจุด กดอีกครั้งเมื่อเสร็จ ตัวละครจะวิ่งตามเส้นนี้ ใช้รูปที่คุณมีสิทธิ์ใช้ เช่น รูปที่วาดหรือสร้างเอง</p>
+        </div>
+        <div class="row2">
+          <label class="field">จำนวนรอบ<input id="inLaps" type="number" min="1" max="20" value="3"></label>
+          <label class="field">ซ่อนเส้นทางทับรูป
+            <select id="inPathOn"><option value="1">แสดงเส้นทาง</option><option value="0">ซ่อน (ใช้ทางในรูป)</option></select>
+          </label>
+        </div>
+        <label class="check"><input id="inHideRoute" type="checkbox"> ซ่อนรูปทรงเส้นทางจริงจาก GPX (กันคนเดาที่อยู่)</label>
+      </section>
+
+      <section>
+        <h2>5 · เควสต์และคลิป</h2>
+        <div class="row3">
+          <label class="field">เป้าระยะ (กม.)<input id="inGoalDist" type="number" step="0.1" min="0.5" value="3"></label>
+          <label class="field">เป้าเพซ<input id="inGoalPace" type="text" value="6:30"></label>
+          <label class="field">น้ำหนัก (กก.)<input id="inWeight" type="number" min="30" max="200" value="55"></label>
+        </div>
+        <div class="row2">
+          <label class="field">ช่วงวิ่งในคลิป (วิ)<input id="inPlay" type="number" min="5" max="60" value="15"></label>
+          <label class="field">ยืดกี่วิ<input id="inStretch" type="number" min="3" max="30" value="8"></label>
+        </div>
+        <label class="field">คลิปตอนวิ่ง (จอเล็ก ไม่ใส่ก็ได้)<input id="inPipVid" type="file" accept="video/*"></label>
+        <p class="status" id="vidStatus" hidden></p>
+      </section>
+
+      <section class="lv">
+        <h2>6 · กดตามจังหวะคลิป</h2>
+        <div class="grid5">
+          <button class="btn" id="kQ" type="button"><span class="e2">📜</span><span class="l">เควสต์</span><kbd>Q</kbd></button>
+          <button class="btn" id="k1" type="button"><span class="e2">🧘</span><span class="l">ยืดก่อน</span><kbd>1</kbd></button>
+          <button class="btn" id="k2" type="button"><span class="e2">🏃</span><span class="l">วิ่ง!</span><kbd>2</kbd></button>
+          <button class="btn" id="k3" type="button"><span class="e2">🌿</span><span class="l">ยืดหลัง</span><kbd>3</kbd></button>
+          <button class="btn" id="k4" type="button"><span class="e2">🏆</span><span class="l">สรุป</span><kbd>4</kbd></button>
+        </div>
+      </section>
+
+      <section class="lv">
+        <h2>7 · Export เป็นวิดีโอ</h2>
+        <button class="apply" id="btnAuto" type="button">▶ เล่นอัตโนมัติทั้งคลิป</button>
+        <button class="apply" id="btnRecord" type="button">🎬 อัดเป็นไฟล์วิดีโอ</button>
+        <p class="status" id="recStatus" hidden></p>
+        <p class="how">ปุ่มอัดใช้ได้เมื่อเปิดไฟล์ในเครื่องด้วย Chrome บนคอม: กดแล้วเลือก "แท็บนี้" หน้าเว็บจะเล่นทั้งคลิปเองแล้วดาวน์โหลดไฟล์ให้ ถ้าเปิดจากลิงก์ claude.ai ให้กด "เล่นอัตโนมัติ" แล้วอัดหน้าจอแทน</p>
+      </section>
+
+      <section>
+        <h2>ตั้งค่า</h2>
+        <label class="field">พื้นหลัง
+          <select id="inBg">
+            <option value="sky">ท้องฟ้าพาสเทล</option>
+            <option value="green">กรีนสกรีน (เอาไปซ้อนคลิป)</option>
+            <option value="blue">บลูสกรีน</option>
+          </select>
+        </label>
+        <div class="checks">
+          <label class="check"><input id="inSafe" type="checkbox" checked> เว้นขอบสำหรับ TikTok / Reels</label>
+          <label class="check"><input id="inGuide" type="checkbox"> แสดงจุดที่ปุ่มแอปบัง (ปิดก่อนอัด)</label>
+          <label class="check"><input id="inChat" type="checkbox" checked> มีฉากคุยกันตอนเข้าเส้นชัย</label>
+          <label class="check"><input id="inSound" type="checkbox" checked> เปิดเสียงเอฟเฟกต์</label>
+          <label class="check"><input id="inMascot" type="checkbox" checked> แสดงมาสคอต</label>
+          <label class="check"><input id="inFrame" type="checkbox" checked> แสดงกรอบรอยเย็บ</label>
+          <label class="check"><input id="inWatermark" type="checkbox"> ใส่ลายน้ำ "Run Quest" ใน Reel</label>
+        </div>
+        <div class="grid3">
+          <button class="btn" id="btnHide" type="button"><span class="e2">🎬</span><span class="l">โหมดอัด</span><kbd>H</kbd></button>
+          <button class="btn" id="btnFull" type="button"><span class="e2">⛶</span><span class="l">เต็มจอ</span><kbd>F</kbd></button>
+          <button class="btn" id="btnReset" type="button"><span class="e2">↺</span><span class="l">รีเซ็ต</span><kbd>0</kbd></button>
+        </div>
+      </section>
+    </div>
+
+    <div class="demo-only">
+      <p class="note">ตัวอย่างนี้วิ่งที่ "สวนสุขใจ" 3.2 กม. วน 3 รอบ กับเพื่อน 2 คน แวะกินลูกชิ้น หมีเจ็บขาขอกลับก่อน และร้านชานมไม่มา อดกิน 😭 ภาพในจอเล็กคือจุดที่จะใส่คลิปจริง</p>
+      <ol class="sb" id="sb"></ol>
+      <button class="replay" id="replay" type="button">▶ เล่นตั้งแต่ต้น</button>
+    </div>
+  </aside>
+</div>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const stage = $('#stage'), fx = $('#fx'), mascot = $('#mascot'), mapSvg = $('#mapSvg'), mapwrap = $('#mapwrap');
+  const INK = '#5B4570';
+  const PASTEL = ['#FFB3CF', '#FFE27A', '#A8EBD0', '#CDBEFF', '#FFC9A3', '#9FD8FF'];
+  const PINKS = ['#FFB3CF', '#FF8FB8', '#FFC9DD'];
+  const COLORS = ['#FF8FB8', '#4FC79A', '#5AAEF0', '#FF9F66'];
+  const EMOJI = ['🐣', '🐻', '🐰', '🐼'];
+  const rand = a => a[Math.floor(Math.random() * a.length)];
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const state = { mode: 'live', sound: true, meFace: null, mapMode: 'auto', mapImg: null, mapImgRatio: 1, trace: [], tracing: false };
+
+  /* ---------- Formatting ---------- */
+  function fmtTime(s) {
+    s = Math.max(0, Math.round(s));
+    const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = String(s % 60).padStart(2, '0');
+    return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+  }
+  function fmtPace(sec) {
+    if (!isFinite(sec) || sec <= 0 || sec > 1800) return '–';
+    let m = Math.floor(sec / 60), s = Math.round(sec - m * 60);
+    if (s === 60) { m++; s = 0; }
+    return `${m}'${String(s).padStart(2, '0')}"`;
+  }
+  function parseClock(str) {
+    const parts = String(str).trim().split(/[:'"’.]+/).filter(Boolean).map(Number);
+    if (!parts.length || parts.some(isNaN)) return NaN;
+    return parts.reduce((acc, v) => acc * 60 + v, 0);
+  }
+
+  /* ---------- Run data ---------- */
+  function splitsBy(r, unit) {
+    const out = []; let k = 1, prevT = 0;
+    for (let i = 1; i < r.t.length; i++) {
+      while (r.d[i] >= k * unit - .01) {
+        const f = (k * unit - r.d[i - 1]) / ((r.d[i] - r.d[i - 1]) || 1), tk = r.t[i - 1] + f * (r.t[i] - r.t[i - 1]);
+        out.push({ n: k, sec: tk - prevT, full: true }); prevT = tk; k++;
+      }
+    }
+    const rest = r.dist - (k - 1) * unit;
+    if (rest > unit * .05) out.push({ n: k, sec: r.total - prevT, full: false, part: rest / unit });
+    return out;
+  }
+  function finalize(t, d, hr, extra) {
+    const hrVals = hr ? hr.filter(Boolean) : [];
+    return Object.assign({ t, d, hr: hrVals.length ? hr : null, total: t[t.length - 1], dist: d[d.length - 1],
+      avgHr: hrVals.length ? Math.round(hrVals.reduce((a, b) => a + b, 0) / hrVals.length) : null }, extra);
+  }
+  function synth(distKm, timeSec, hrAvg, source, phase = 0) {
+    const step = 5, n = Math.max(2, Math.ceil(timeSec / step)), raw = [0];
+    for (let i = 1; i <= n; i++) {
+      const tt = i * step, m = 1 + .07 * Math.sin(tt / 140 + phase) + .03 * Math.sin(tt / 37 + phase) - (i > n * .85 ? .08 : 0);
+      raw.push(raw[i - 1] + step / m);
+    }
+    const scale = distKm * 1000 / raw[n], t = [], d = [], hr = [];
+    for (let i = 0; i <= n; i++) {
+      const tt = Math.min(timeSec, i * step);
+      t.push(tt); d.push(raw[i] * scale);
+      hr.push(hrAvg ? Math.round(hrAvg - 14 + 20 * Math.min(1, tt / 300) + 4 * Math.sin(tt / 50) + (i > n * .85 ? 8 : 0)) : 0);
+    }
+    return finalize(t, d, hrAvg ? hr : null, { source });
+  }
+  function parseGpx(text) {
+    const doc = new DOMParser().parseFromString(text, 'application/xml');
+    if (doc.getElementsByTagName('parsererror').length) throw new Error('อ่านไฟล์ไม่ได้ ลองเช็กว่าเป็นไฟล์ .gpx จาก Strava');
+    const pts = [...doc.getElementsByTagName('trkpt')];
+    if (pts.length < 2) throw new Error('ไฟล์นี้ไม่มีเส้นทาง GPS (กิจกรรมที่กรอกมือหรือวิ่งบนลู่จะไม่มี)');
+    const R = 6371000, rad = x => x * Math.PI / 180;
+    const t = [0], d = [0], hr = [], lat = [], lon = [];
+    let prev = null, moving = 0, dist = 0, pauseAcc = 0;
+    const found = [];
+    for (const p of pts) {
+      const la = parseFloat(p.getAttribute('lat')), lo = parseFloat(p.getAttribute('lon'));
+      const timeEl = p.getElementsByTagName('time')[0];
+      if (!timeEl) throw new Error('ไฟล์นี้ไม่มีข้อมูลเวลา');
+      const ts = Date.parse(timeEl.textContent);
+      const hrEl = p.getElementsByTagNameNS('*', 'hr')[0];
+      const h = hrEl ? parseInt(hrEl.textContent, 10) : 0;
+      if (prev) {
+        const dLat = rad(la - prev.la), dLon = rad(lo - prev.lo);
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(prev.la)) * Math.cos(rad(la)) * Math.sin(dLon / 2) ** 2;
+        const dd = 2 * R * Math.asin(Math.sqrt(a)), dt = (ts - prev.ts) / 1000;
+        if (dt <= 0) { prev = { la, lo, ts }; continue; }
+        if (dd / dt < .5 && dt >= 3) { pauseAcc += dt; prev = { la, lo, ts }; continue; } // skip stops → moving time
+        // A stop of a minute or more is probably a snack break.
+        if (pauseAcc >= 60 && dist > 150) found.push({ d: dist, sec: pauseAcc });
+        pauseAcc = 0;
+        moving += dt; dist += dd;
+        t.push(moving); d.push(dist); hr.push(h); lat.push(la); lon.push(lo);
+      } else { hr.push(h); lat.push(la); lon.push(lo); }
+      prev = { la, lo, ts };
+    }
+    if (dist < 100) throw new Error('ระยะในไฟล์สั้นเกินไป ลองไฟล์อื่น');
+    const name = doc.getElementsByTagName('name')[0], start = doc.getElementsByTagName('time')[0];
+    return finalize(t, d, hr, { source: 'gpx', lat, lon, stops: found.filter(s => s.d < dist - 100), title: name ? name.textContent.trim() : '', date: start ? new Date(start.textContent) : null });
+  }
+  function sampleAt(r, sec) {
+    const { t, d, hr } = r;
+    if (sec <= 0) return { d: 0, hr: hr ? hr[0] : null };
+    if (sec >= r.total) return { d: r.dist, hr: hr ? hr[hr.length - 1] : null };
+    let lo = 0, hi = t.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (t[mid] <= sec) lo = mid; else hi = mid; }
+    const f = (sec - t[lo]) / ((t[hi] - t[lo]) || 1);
+    return { d: d[lo] + f * (d[hi] - d[lo]), hr: hr ? hr[lo] || hr[hi] : null };
+  }
+  function paceAt(r, sec) {
+    const w = Math.min(30, sec); if (w < 5) return NaN;
+    const dd = sampleAt(r, sec).d - sampleAt(r, sec - w).d;
+    return dd < 1 ? NaN : w / (dd / 1000);
+  }
+  const DEMO_RUN = synth(3.2, 19 * 60 + 40, 156, 'demo');
+  const DEMO_FRIENDS = [
+    { name: 'หมี', face: null, run: synth(3.18, 19 * 60 + 52, 0, 'demo', 1.3), leaveKm: 1.9, reason: 'pain' },
+    { name: 'กระต่าย', face: null, run: synth(3.22, 19 * 60 + 31, 0, 'demo', 2.4) },
+  ];
+  let run = DEMO_RUN, liveRun = DEMO_RUN;
+  let friends = [], liveFriends = [{ name: 'เพื่อนหมี', face: null, run: null, leaveKm: null, reason: 'pain' }];
+
+  /* ---------- Snack stops + place ---------- */
+  const FOOD_KCAL = { '🍡': 180, '🧋': 350, '🍦': 140, '🍌': 105, '🥤': 150, '🍢': 200, '🍞': 250, '🍉': 60, '🍙': 180, '🌭': 290, '🍜': 450, '🥭': 120 };
+  const DEMO_STOPS = [{ emoji: '🍡', name: 'ลูกชิ้นปิ้ง', km: 1.1, kcal: 180 }, { emoji: '🧋', name: 'ชานมไข่มุก', km: 2.5, kcal: 350, closed: true }];
+  let stops = [], liveStops = [{ emoji: '🍡', name: 'ร้านลูกชิ้นป้า', km: 1.6, kcal: 180 }];
+  const place = () => state.mode === 'demo' ? 'สวนสุขใจ' : $('#inPlace').value.trim();
+  function uForD(dm) {
+    const { t, d } = run;
+    if (dm <= 0) return 0; if (dm >= run.dist) return 1;
+    let lo = 0, hi = d.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (d[mid] <= dm) lo = mid; else hi = mid; }
+    const f = (dm - d[lo]) / ((d[hi] - d[lo]) || 1);
+    return (t[lo] + f * (t[hi] - t[lo])) / run.total;
+  }
+  function stopList() {
+    return stops.filter(s => s.km > 0 && s.km * 1000 < run.dist - 20)
+      .map(s => ({ ...s, kcal: Math.max(0, Math.round(s.kcal || 0)), d: s.km * 1000, u: uForD(s.km * 1000) }))
+      .sort((a, b) => a.d - b.d);
+  }
+
+  /* ---------- Settings ---------- */
+  const num = (id, def, min) => { const v = parseFloat($('#' + id).value); return isFinite(v) && v >= min ? v : def; };
+  const goalKm = () => num('inGoalDist', 3, .5);
+  const goalPace = () => { const p = parseClock($('#inGoalPace').value); return isFinite(p) && p > 120 ? p : 390; };
+  const laps = () => Math.round(num('inLaps', 1, 1));
+  const kcalFor = km => Math.round(num('inWeight', 55, 30) * km * 1.036);
+  const rankFor = p => !isFinite(p) ? '' : p < 330 ? '🐆' : p < 420 ? '🐰' : '🐢';
+
+  /* ---------- Crew (everyone runs together; progress u goes 0 → 1 over the clip) ---------- */
+  function crew() {
+    const list = [{ id: 'me', me: true, name: $('#inName').value.trim() || 'ฉัน', face: state.meFace, emoji: EMOJI[0], color: COLORS[0], run }];
+    friends.forEach((f, i) => list.push({ id: 'f' + i, name: f.name || 'เพื่อน', face: f.face, emoji: EMOJI[i + 1], color: COLORS[i + 1], run: f.run || null, leaveKm: f.leaveKm, reason: f.reason || 'pain' }));
+    list.forEach(p => {
+      const r = p.run;
+      p.dAt = u => r ? sampleAt(r, u * r.total).d : sampleAt(run, u * run.total).d;
+      p.total = r ? r.total : run.total;
+      p.dist = r ? r.dist : run.dist;
+      // A friend who heads home early stops at the spot where they said goodbye.
+      if (!p.me && p.leaveKm > 0 && p.leaveKm * 1000 < run.dist - 50) {
+        const base = p.dAt; p.leaveD = p.leaveKm * 1000; p.leaveU = uForD(p.leaveD);
+        p.dAt = u => base(Math.min(u, p.leaveU)); p.leftDist = base(p.leaveU);
+      }
+    });
+    return list;
+  }
+  const faceHtml = p => p.face ? `<img src="${p.face}" alt="">` : p.emoji;
+
+  /* ---------- Doodle helpers ---------- */
+  const sw = (w = 1.6) => `stroke="${INK}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round"`;
+  const SHAPE = {
+    spark: c => `<svg viewBox="0 0 24 24"><path d="M12 2C13 9 15 11 22 12C15 13 13 15 12 22C11 15 9 13 2 12C9 11 11 9 12 2Z" fill="${c}" ${sw()}/></svg>`,
+    heart: c => `<svg viewBox="0 0 24 24"><path d="M12 20.5C5.5 15.5 2.5 12.3 2.5 8.6A4.6 4.6 0 0 1 12 6.3a4.6 4.6 0 0 1 9.5 2.3c0 3.7-3 6.9-9.5 11.9z" fill="${c}" ${sw()}/></svg>`,
+    star: c => `<svg viewBox="0 0 24 24"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5L2.5 9.4l6.6-.9z" fill="${c}" ${sw()}/></svg>`,
+    dot: c => `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5" fill="${c}" ${sw(1.8)}/></svg>`,
+  };
+  function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  function distToPoly(x, y, pts) {
+    let best = 1e9;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i], dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy || 1;
+      const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / L));
+      const d = Math.hypot(x - (a.x + t * dx), y - (a.y + t * dy));
+      if (d < best) best = d;
+    }
+    return best;
+  }
+
+  /* ---------- Route shape ---------- */
+  let mapW = 100, mapH = 100, shape = null, charScale = 1;
+  const lastPos = {};
+  function rawRoute() {
+    if (run.lat && run.lat.length > 3 && !$('#inHideRoute').checked) {
+      const L = run.dist / laps(), c = Math.cos(run.lat[0] * Math.PI / 180), pts = [];
+      for (let i = 0; i < run.d.length && run.d[i] <= L + 1; i++) pts.push({ x: run.lon[i] * c, y: -run.lat[i] });
+      return pts;
+    }
+    const pts = [], N = 120;
+    for (let i = 0; i <= N; i++) {
+      const a = i / N * Math.PI * 2 + Math.PI * .5;
+      pts.push({ x: 40 * Math.cos(a) + 6 * Math.cos(2 * a) + 3 * Math.sin(3 * a), y: 34 * Math.sin(a) + 7 * Math.sin(2 * a) });
+    }
+    return pts;
+  }
+  function fit(pts, box) {
+    const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+    const w = Math.max(maxX - minX, 1e-9), h = Math.max(maxY - minY, 1e-9);
+    const sc = Math.min((box.x1 - box.x0) / w, (box.y1 - box.y0) / h);
+    const ox = box.x0 + ((box.x1 - box.x0) - w * sc) / 2, oy = box.y0 + ((box.y1 - box.y0) - h * sc) / 2;
+    return pts.map(p => ({ x: ox + (p.x - minX) * sc, y: oy + (p.y - minY) * sc }));
+  }
+  function withFractions(pts) {
+    let acc = 0; pts[0].f = 0;
+    for (let i = 1; i < pts.length; i++) { acc += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y); pts[i].f = acc; }
+    pts.forEach(p => { p.f = acc ? p.f / acc : 0; });
+    return pts;
+  }
+  function posAt(frac) {
+    const pts = shape, f = Math.max(0, Math.min(1, frac));
+    let lo = 0, hi = pts.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (pts[mid].f <= f) lo = mid; else hi = mid; }
+    const k = (f - pts[lo].f) / ((pts[hi].f - pts[lo].f) || 1);
+    return { x: pts[lo].x + k * (pts[hi].x - pts[lo].x), y: pts[lo].y + k * (pts[hi].y - pts[lo].y) };
+  }
+
+  /* ---------- Cartoon park drawing ---------- */
+  function tree(x, y, s, kind) {
+    if (kind) return `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${s.toFixed(2)})">
+      <ellipse cx="0" cy="0.4" rx="2.6" ry=".8" fill="rgba(40,80,40,.18)"/><rect x="-.45" y="-1.6" width=".9" height="2" fill="#A7704C" stroke="${INK}" stroke-width=".35"/>
+      <path d="M0-8.4 3-4.2H1.6L3.6-1.4H-3.6L-1.6-4.2H-3Z" fill="#3F9E62" stroke="${INK}" stroke-width=".45" stroke-linejoin="round"/>
+      <path d="M-.6-6.8 0-7.6" stroke="#8FD9A6" stroke-width=".5" stroke-linecap="round"/></g>`;
+    return `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${s.toFixed(2)})">
+      <ellipse cx="0" cy="0.4" rx="2.6" ry=".8" fill="rgba(40,80,40,.18)"/><rect x="-.45" y="-2" width=".9" height="2.4" fill="#A7704C" stroke="${INK}" stroke-width=".35"/>
+      <circle cx="0" cy="-4.6" r="3.1" fill="#5DBB72" stroke="${INK}" stroke-width=".45"/><circle cx="-1" cy="-5.6" r="1.1" fill="#86D596"/></g>`;
+  }
+  function hut(x, y, s, roof, name) {
+    return `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${s.toFixed(2)})">
+      <ellipse cx="0" cy=".6" rx="6.4" ry="1.3" fill="rgba(40,80,40,.18)"/>
+      <rect x="-4.6" y="-5.2" width="9.2" height="5.6" rx=".6" fill="#FFEBD2" stroke="${INK}" stroke-width=".5"/>
+      <path d="M-6-4.8 0-10 6-4.8Z" fill="${roof}" stroke="${INK}" stroke-width=".5" stroke-linejoin="round"/>
+      <path d="M-4.4-6.2H4.4" stroke="#fff" stroke-width=".4" stroke-dasharray=".8 .8" opacity=".8"/>
+      <rect x="-1.1" y="-3" width="2.2" height="3.4" rx=".5" fill="#B57A55" stroke="${INK}" stroke-width=".4"/>
+      <rect x="1.8" y="-3.8" width="2" height="1.6" rx=".3" fill="#BFE6FF" stroke="${INK}" stroke-width=".35"/>
+      <rect x="-3.8" y="-3.8" width="2" height="1.6" rx=".3" fill="#BFE6FF" stroke="${INK}" stroke-width=".35"/>
+      ${name ? sign(0, -12.4, name, 1) : ''}</g>`;
+  }
+  function sign(x, y, text, s = 1) {
+    const w = 2.2 * text.length * .62 + 3;
+    return `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${s})">
+      <rect x="${(-w / 2).toFixed(2)}" y="-2.1" width="${w.toFixed(2)}" height="4.2" rx="1.4" fill="#fff" stroke="${INK}" stroke-width=".45"/>
+      <text x="0" y=".95" text-anchor="middle" font-family="Sriracha, sans-serif" font-size="2.7" fill="${INK}">${esc(text)}</text></g>`;
+  }
+  function poleSign(x, y, text) {
+    return `<g><path d="M${x.toFixed(1)} ${y.toFixed(1)}v4" stroke="#A7704C" stroke-width=".8" stroke-linecap="round"/>${sign(x, y, text)}</g>`;
+  }
+  function woodSign(x, y) {
+    const text = place() || 'RUN MAP', len = [...text].length;
+    const fs = Math.max(3, Math.min(5.2, 30 / (len * .58))), w = Math.max(28, len * fs * .58 + 6);
+    return `<g transform="translate(${x} ${y.toFixed(1)}) rotate(-5)">
+      <path d="M${(w * .22).toFixed(1)} 12V4M${(w * .78).toFixed(1)} 12V4" stroke="#8B5A3C" stroke-width="1.6" stroke-linecap="round"/>
+      <rect x="0" y="0" width="${w.toFixed(1)}" height="9" rx="1.6" fill="#C98A5B" stroke="${INK}" stroke-width=".6"/>
+      <path d="M1 4.5H${(w - 1).toFixed(1)}" stroke="#A86F47" stroke-width=".5"/>
+      <text x="${(w / 2).toFixed(1)}" y="6.2" text-anchor="middle" font-family="Sriracha, sans-serif" font-size="${fs.toFixed(2)}" fill="#FFF3DD" stroke="${INK}" stroke-width=".8" paint-order="stroke">${esc(text)}</text></g>`;
+  }
+  function cartPositions() {
+    const L = run.dist / laps();
+    const cx = shape.reduce((a, p) => a + p.x, 0) / shape.length, cy = shape.reduce((a, p) => a + p.y, 0) / shape.length;
+    return stopList().map(s => {
+      const f = (s.d % L) / L, p = posAt(f), q = posAt(Math.min(1, f + .01)), r = posAt(Math.max(0, f - .01));
+      let nx = -(q.y - r.y), ny = q.x - r.x; const l = Math.hypot(nx, ny);
+      if (l < 1e-6) { nx = 0; ny = -1; } else { nx /= l; ny /= l; }
+      if ((p.x - cx) * nx + (p.y - cy) * ny < 0) { nx = -nx; ny = -ny; }
+      return { s, p, x: Math.max(8, Math.min(mapW - 8, p.x + nx * 9)), y: Math.max(14, Math.min(mapH - 3, p.y + ny * 9 + 3)) };
+    });
+  }
+  function cartSvg(c) {
+    const stripes = [0, 1, 2, 3, 4].map(i => `<rect x="${(-5.4 + i * 2.16).toFixed(2)}" y="-8" width="1.08" height="2.2" fill="#fff"/>`).join('');
+    return `<path d="M${c.p.x.toFixed(1)} ${c.p.y.toFixed(1)}L${c.x.toFixed(1)} ${c.y.toFixed(1)}" stroke="${INK}" stroke-width=".45" stroke-dasharray="1 1.1" opacity=".7"/>
+      <g class="cart" transform="translate(${c.x.toFixed(1)} ${c.y.toFixed(1)})">
+      <ellipse cx="0" cy=".9" rx="5.2" ry="1.1" fill="rgba(40,80,40,.2)"/>
+      <path d="M-4.6-4.4V-8M4.6-4.4V-8" stroke="${INK}" stroke-width=".5"/>
+      <rect x="-4.2" y="-4.6" width="8.4" height="4.6" rx=".8" fill="${c.s.closed ? '#E9E4EF' : '#FFF3DD'}" stroke="${INK}" stroke-width=".5"/>
+      ${c.s.closed ? '<path d="M-4.2-3.4H4.2M-4.2-2.3H4.2M-4.2-1.2H4.2" stroke="#B9B0C6" stroke-width=".4"/>' : ''}
+      <circle cx="-2.6" cy=".2" r="1.2" fill="#fff" stroke="${INK}" stroke-width=".45"/><circle cx="2.6" cy=".2" r="1.2" fill="#fff" stroke="${INK}" stroke-width=".45"/>
+      <g class="awn"><path d="M-5.6-8H5.6L4.8-5.8H-4.8Z" fill="${c.s.closed ? '#C9C2D3' : '#FF8FB8'}" stroke="${INK}" stroke-width=".45" stroke-linejoin="round"/>${stripes}</g>
+      <text x="0" y="-2.1" text-anchor="middle" dominant-baseline="central" font-size="3.8">${c.s.closed ? '🔒' : c.s.emoji}</text>
+      ${sign(0, -10.6, (c.s.name || 'ร้าน') + (c.s.closed ? ' (ปิด)' : ''), .9)}</g>`;
+  }
+  // opt.ratio: force an aspect ratio · opt.noChars: skip runners · opt.out: return markup instead of drawing into the page
+  function buildMap(opt = {}) {
+    const box = mapSvg.getBoundingClientRect();
+    const auto = state.mapMode === 'auto' || !state.mapImg;
+    const ratio = opt.ratio || (auto ? (box.width > 10 && box.height > 10 ? box.height / box.width : 1) : state.mapImgRatio);
+    mapW = 100; mapH = Math.max(50, Math.min(200, Math.round(100 * ratio)));
+    if (!opt.out) {
+      mapSvg.setAttribute('viewBox', `0 0 ${mapW} ${mapH}`);
+      mapSvg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    }
+    const traced = !auto && state.trace.length >= 3;
+    let pts;
+    if (traced) {
+      pts = state.trace.map(p => ({ x: p.x * mapW, y: p.y * mapH }));
+      if (laps() > 1) pts.push({ ...pts[0] });
+    } else {
+      pts = fit(rawRoute(), auto ? { x0: 12, x1: mapW - 12, y0: 12, y1: mapH - 17 } : { x0: 10, x1: mapW - 10, y0: 10, y1: mapH - 10 });
+    }
+    shape = withFractions(pts);
+    charScale = Math.min(mapW, mapH) / 100 * 1.1;
+    const routeD = shape.map((p, i) => (i ? 'L' : 'M') + p.x.toFixed(2) + ' ' + p.y.toFixed(2)).join('');
+    const showPath = auto || $('#inPathOn').value === '1' || state.tracing;
+    const carts = cartPositions();
+    let g = '';
+    if (auto) {
+      const rnd = mulberry(Math.round(run.dist) + shape.length * 7);
+      g += `<rect width="${mapW}" height="${mapH}" fill="#9AD8A6"/>`;
+      for (let i = 0; i < 10; i++) g += `<ellipse cx="${(rnd() * mapW).toFixed(1)}" cy="${(rnd() * mapH).toFixed(1)}" rx="${(8 + rnd() * 14).toFixed(1)}" ry="${(5 + rnd() * 8).toFixed(1)}" fill="#8CCF99" opacity=".7"/>`;
+      // River: a lazy curve down one side of the park
+      const rv = [], side = rnd() > .5;
+      for (let i = 0; i <= 24; i++) {
+        const y = -6 + (mapH + 12) * i / 24;
+        rv.push({ x: (side ? mapW * .86 : mapW * .14) + Math.sin(i / 3.2 + rnd() * .2) * 5, y });
+      }
+      const rvD = rv.map((p, i) => (i ? 'L' : 'M') + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join('');
+      g += `<path d="${rvD}" fill="none" stroke="${INK}" stroke-width="8.4" stroke-linecap="round"/><path d="${rvD}" fill="none" stroke="#8ED3F5" stroke-width="7"/>
+            <path d="${rvD}" fill="none" stroke="#fff" stroke-width=".6" stroke-dasharray="3 5" opacity=".8"/>`;
+      // Pond in a free corner
+      const free = (x, y, r) => distToPoly(x, y, shape) > r && distToPoly(x, y, rv) > r - 1 && x > 6 && x < mapW - 6 && y > 6 && y < mapH - 6;
+      const spots = [];
+      for (let i = 0; i < 300 && spots.length < 2; i++) {
+        const x = 10 + rnd() * (mapW - 20), y = 12 + rnd() * (mapH - 30);
+        if (free(x, y, 13) && spots.every(s => Math.hypot(s.x - x, s.y - y) > 22)) spots.push({ x, y });
+      }
+      const items = [];
+      // minimal: the reel map skips small labels that would be unreadable at phone size
+      if (spots[0]) items.push({ y: spots[0].y, svg: hut(spots[0].x, spots[0].y, 1, '#F2905E', opt.minimal ? '' : 'คาเฟ่') });
+      if (spots[1]) items.push({ y: spots[1].y, svg: hut(spots[1].x, spots[1].y, .85, '#9D86E8', opt.minimal ? '' : 'ห้องน้ำ') });
+      // Trees, kept off the path, the river and the huts
+      const trees = [];
+      for (let i = 0; i < 700 && trees.length < 60; i++) {
+        const x = 3 + rnd() * (mapW - 6), y = 6 + rnd() * (mapH - 8);
+        if (distToPoly(x, y, shape) < 6.5 || distToPoly(x, y, rv) < 5.5) continue;
+        if (x < 34 && y > mapH - 15) continue;
+        if (spots.some(s => Math.hypot(s.x - x, s.y - y) < 10)) continue;
+        if (carts.some(c => Math.hypot(c.x - x, c.y - y + 5) < 9)) continue;
+        if (trees.some(t => Math.hypot(t.x - x, t.y - y) < 4.6)) continue;
+        trees.push({ x, y });
+        items.push({ y, svg: tree(x, y, .8 + rnd() * .45, rnd() > .55) });
+      }
+      for (let i = 0; i < 26; i++) {
+        const x = rnd() * mapW, y = rnd() * mapH;
+        if (distToPoly(x, y, shape) < 4.5) continue;
+        g += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r=".7" fill="${rand(['#FFB3CF', '#FFE27A', '#fff', '#CDBEFF'])}" stroke="${INK}" stroke-width=".2"/>`;
+      }
+      // Path (sand) goes over the river like a little bridge
+      g += pathLayers(routeD, true);
+      items.sort((a, b) => a.y - b.y).forEach(it => { g += it.svg; });
+      // Signs along the path
+      const cx = shape.reduce((a, p) => a + p.x, 0) / shape.length, cy = shape.reduce((a, p) => a + p.y, 0) / shape.length;
+      (opt.minimal ? [] : ['จุดพัก', 'ทางวิ่ง', 'จุดชมวิว']).forEach((txt, i) => {
+        const p = posAt(.22 + i * .27), q = posAt(.22 + i * .27 + .01);
+        let nx = -(q.y - p.y), ny = q.x - p.x; const l = Math.hypot(nx, ny) || 1; nx /= l; ny /= l;
+        if ((p.x - cx) * nx + (p.y - cy) * ny < 0) { nx = -nx; ny = -ny; }
+        const sx = Math.max(9, Math.min(mapW - 9, p.x + nx * 7)), sy = Math.max(6, Math.min(mapH - 8, p.y + ny * 7));
+        g += poleSign(sx, sy - 2, txt);
+      });
+      g += carts.map(cartSvg).join('');
+      g += woodSign(4, mapH - 13);
+    } else {
+      g += `<image href="${state.mapImg}" x="0" y="0" width="${mapW}" height="${mapH}" preserveAspectRatio="none"/>`;
+      if (showPath) g += pathLayers(routeD, false);
+      else g += `<path id="trail" d="${routeD}" pathLength="1" fill="none" stroke="#FFB3CF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="0 1" opacity=".85"/>`;
+      if (!state.tracing) g += carts.map(cartSvg).join('');
+      if (place()) g += woodSign(3, 3);
+    }
+    const st = shape[0];
+    g += `<g transform="translate(${st.x.toFixed(1)} ${(st.y - 3).toFixed(1)})"><path d="M0 3V-5" stroke="${INK}" stroke-width=".6"/><path d="M0-5h5v3.4H0z" fill="#fff" stroke="${INK}" stroke-width=".45"/><path d="M0-5h1.7v1.7H0zM3.4-5h1.6v1.7H3.4zM1.7-3.3h1.7v1.7H1.7z" fill="${INK}"/></g>`;
+    if (state.tracing) {
+      const tp = state.trace.map(p => ({ x: p.x * mapW, y: p.y * mapH }));
+      if (tp.length) g += `<path d="${tp.map((p, i) => (i ? 'L' : 'M') + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join('')}" fill="none" stroke="#9D86E8" stroke-width="1.4" stroke-dasharray="2 1.4" stroke-linecap="round"/>`;
+      tp.forEach((p, i) => { g += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${i ? 1.1 : 1.8}" fill="${i ? '#fff' : '#FFE27A'}" stroke="${INK}" stroke-width=".5"/>`; });
+    } else {
+      if (!opt.noChars) crew().slice().reverse().forEach(p => { g += charSvg(p); });
+    }
+    if (opt.out) return g;
+    mapSvg.innerHTML = g;
+  }
+  function pathLayers(d, sand) {
+    return `<path d="${d}" fill="none" stroke="${INK}" stroke-width="${sand ? 7 : 4}" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="${d}" fill="none" stroke="${sand ? '#F6DFAE' : '#FFF3C4'}" stroke-width="${sand ? 5.6 : 2.8}" stroke-linecap="round" stroke-linejoin="round"/>
+      <path id="trail" d="${d}" pathLength="1" fill="none" stroke="#FFB3CF" stroke-width="${sand ? 2.6 : 2}" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="0 1"/>
+      <path d="${d}" fill="none" stroke="#fff" stroke-width=".5" stroke-dasharray="1.6 2" opacity=".9"/>`;
+  }
+  function charSvg(p) {
+    const head = p.face
+      ? `<clipPath id="cp-${p.id}"><circle cx="0" cy="-9.6" r="3.2"/></clipPath><image href="${p.face}" x="-3.4" y="-13" width="6.8" height="6.8" clip-path="url(#cp-${p.id})" preserveAspectRatio="xMidYMid slice"/>`
+      : `<text x="0" y="-9.4" text-anchor="middle" dominant-baseline="central" font-size="5">${p.emoji}</text>`;
+    const nw = Math.max(6, p.name.length * 1.5 + 2.4);
+    return `<g class="char" id="ch-${p.id}" transform="translate(${shape[0].x.toFixed(1)} ${shape[0].y.toFixed(1)}) scale(${charScale.toFixed(2)})">
+      <ellipse cx="0" cy=".5" rx="2.8" ry=".9" fill="rgba(40,60,40,.22)"/>
+      <g class="cb">
+        <line class="lg lg1" x1="-.9" y1="-3" x2="-.9" y2=".2" stroke="${INK}" stroke-width="1.1" stroke-linecap="round"/>
+        <line class="lg lg2" x1=".9" y1="-3" x2=".9" y2=".2" stroke="${INK}" stroke-width="1.1" stroke-linecap="round"/>
+        <rect x="-2.2" y="-6.6" width="4.4" height="4.2" rx="1.7" fill="${p.color}" stroke="${INK}" stroke-width=".5"/>
+        <circle cx="0" cy="-9.6" r="3.7" fill="#fff" stroke="${p.color}" stroke-width="1"/>${head}
+        <circle cx="0" cy="-9.6" r="4.2" fill="none" stroke="${INK}" stroke-width=".4"/>
+        <g transform="translate(0 -16)"><rect x="${(-nw / 2).toFixed(1)}" y="-1.7" width="${nw.toFixed(1)}" height="3.4" rx="1.6" fill="#fff" stroke="${INK}" stroke-width=".35"/>
+        <text x="0" y=".75" text-anchor="middle" font-family="Mali, sans-serif" font-weight="700" font-size="2.2" fill="${INK}">${esc(p.name)}</text></g>
+      </g></g>`;
+  }
+  function placeChars(u, final) {
+    const n = laps(), list = crew();
+    list.forEach((p, i) => {
+      const d = final && p.leaveU == null ? p.dist : p.dAt(u), L = p.dist / n, done = d >= p.dist - .5;
+      const lapIdx = done ? n - 1 : Math.min(n - 1, Math.floor(d / L));
+      let f = done ? 1 : (d - lapIdx * L) / L;
+      // Friends trail a little behind so the group doesn't stack on one spot.
+      f = Math.max(0, f - i * .022);
+      const pos = posAt(f);
+      const el = document.getElementById('ch-' + p.id);
+      if (el) {
+        el.setAttribute('transform', `translate(${pos.x.toFixed(2)} ${pos.y.toFixed(2)}) scale(${charScale.toFixed(2)})`);
+        el.classList.toggle('bye', p.leaveU != null && u > p.leaveU + 1e-6);
+      }
+      lastPos[p.id] = pos;
+      if (p.me) {
+        const lap = done ? n : lapIdx + 1, pill = $('#lapPill'), txt = `รอบ ${lap}/${n}`;
+        if (pill.textContent !== txt) { pill.textContent = txt; pill.classList.remove('pop'); void pill.offsetWidth; pill.classList.add('pop'); }
+        const tr = document.getElementById('trail'); if (tr) tr.setAttribute('stroke-dasharray', `${(done ? 1 : (d - lapIdx * L) / L).toFixed(4)} 1`);
+      }
+    });
+    return list;
+  }
+  function setRunning(on) { document.querySelectorAll('.char').forEach(c => c.classList.toggle('go', on)); mascot.classList.toggle('running', on); }
+
+  /* ---------- Mascot + sound ---------- */
+  mascot.innerHTML = `<svg viewBox="0 0 100 100">
+    <path d="M26 40 20 12 44 28Z" fill="#fff" ${sw(4)}/><path d="M74 40 80 12 56 28Z" fill="#fff" ${sw(4)}/>
+    <path d="M26 33 24 21 34 28Z" fill="#FFB3CF"/><path d="M74 33 76 21 66 28Z" fill="#FFB3CF"/>
+    <path d="M50 24C78 24 92 44 92 64C92 84 74 95 50 95C26 95 8 84 8 64C8 44 22 24 50 24Z" fill="#fff" ${sw(4)}/>
+    <path d="M14 46Q50 34 86 46" fill="none" stroke="#FF8FB8" stroke-width="7" stroke-linecap="round"/>
+    <ellipse cx="27" cy="69" rx="7" ry="4.5" fill="#FFB3CF"/><ellipse cx="73" cy="69" rx="7" ry="4.5" fill="#FFB3CF"/>
+    <g data-part="idle"><circle cx="36" cy="58" r="4.8" fill="${INK}"/><circle cx="64" cy="58" r="4.8" fill="${INK}"/><circle cx="37.6" cy="56.4" r="1.6" fill="#fff"/><circle cx="65.6" cy="56.4" r="1.6" fill="#fff"/></g>
+    <g data-part="happy" fill="none" ${sw(4)}><path d="M30 60Q36 52 42 60"/><path d="M58 60Q64 52 70 60"/></g>
+    <g data-part="tired" fill="none" ${sw(4)}><path d="M31 56l9 3-9 3"/><path d="M69 56l-9 3 9 3"/></g>
+    <g data-part="star"><path d="M36 50l2.6 5.2 5.6.8-4 4 1 5.6-5.2-2.7-5 2.7 1-5.6-4-4 5.6-.8z" fill="#FFE27A" ${sw(2)}/><path d="M64 50l2.6 5.2 5.6.8-4 4 1 5.6-5.2-2.7-5 2.7 1-5.6-4-4 5.6-.8z" fill="#FFE27A" ${sw(2)}/></g>
+    <path data-part="idle" d="M43 70Q46.5 74.5 50 70Q53.5 74.5 57 70" fill="none" ${sw(3.5)}/>
+    <ellipse data-part="happy star tired" cx="50" cy="73" rx="5" ry="6" fill="#FF7F9F" ${sw(3)}/>
+    <path data-part="tired" d="M86 34C86 34 80 42 80 46a6 6 0 0 0 12 0C92 42 86 34 86 34z" fill="#9FD8FF" ${sw(2.5)}/>
+  </svg>`;
+  let moodTimer = null;
+  function setMood(m, hold) {
+    mascot.dataset.mood = m; mascot.classList.remove('squish'); void mascot.offsetWidth; mascot.classList.add('squish');
+    clearTimeout(moodTimer); if (hold) moodTimer = setTimeout(() => setMood('idle'), hold);
+  }
+  function flowerSvg(color) {
+    let petals = '';
+    for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2; petals += `<circle cx="${(50 + Math.cos(a) * 30).toFixed(1)}" cy="${(50 + Math.sin(a) * 30).toFixed(1)}" r="18" fill="${color}" ${sw(3)}/>`; }
+    return `<svg class="flower" viewBox="0 0 100 100">${petals}<circle cx="50" cy="50" r="31" fill="${color}"/><circle cx="50" cy="50" r="24" fill="none" stroke="#fff" stroke-width="2" stroke-dasharray="4 5" opacity=".8"/></svg>`;
+  }
+  const CROWN = `<svg class="crown" viewBox="0 0 32 22"><path d="M3 19 5 6l6 6 5-9 5 9 6-6 2 13z" fill="#FFE27A" ${sw(2)}/><circle cx="16" cy="14" r="2" fill="#FFB3CF"/></svg>`;
+  // Audio bus: every sound effect goes through busSfx → busMaster, so the reel export can record it.
+  let ac = null, busSfx = null, busMaster = null, recDest = null;
+  function audio() {
+    if (!ac) {
+      ac = new (window.AudioContext || window.webkitAudioContext)();
+      busMaster = ac.createGain(); busMaster.connect(ac.destination);
+      busSfx = ac.createGain(); busSfx.gain.value = state.sfxVol ?? .8; busSfx.connect(busMaster);
+    }
+    if (ac.state === 'suspended') ac.resume().catch(() => {});
+    return ac;
+  }
+  // While exporting, offAudio points at an OfflineAudioContext and offAt is the cue time in the reel.
+  let offAudio = null, offAt = 0;
+  function tone(f, dur, type = 'sine', when = 0, vol = .12, slide) {
+    if (!state.sound) return;
+    try {
+      const ctx = offAudio || audio();
+      const t = (offAudio ? offAt : ctx.currentTime) + when, o = ctx.createOscillator(), g = ctx.createGain();
+      const v = offAudio ? vol * (state.sfxVol ?? .8) : vol;
+      o.type = type; o.frequency.setValueAtTime(f, t);
+      if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + dur);
+      g.gain.setValueAtTime(Math.max(v, .0011), t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+      o.connect(g).connect(offAudio ? ctx.destination : busSfx); o.start(t); o.stop(t + dur + .02);
+    } catch (e) { /* sound is optional */ }
+  }
+  const sfx = {
+    ping: () => { tone(880, .12); tone(1320, .25, 'sine', .1); },
+    pop: () => tone(500, .09, 'sine', 0, .12, 900),
+    tick: () => tone(700, .05, 'square', 0, .03),
+    medal: () => [988, 1319].forEach((f, i) => tone(f, .2, 'square', i * .1, .06)),
+    whoosh: () => tone(300, .5, 'triangle', 0, .1, 1400),
+    sad: () => [494, 440, 392].forEach((f, i) => tone(f, .28, 'triangle', i * .22, .08)),
+    bye: () => [880, 660].forEach((f, i) => tone(f, .18, 'sine', i * .14, .08)),
+    blip: () => tone(1200 + Math.random() * 300, .05, 'sine', 0, .05),
+    munch: () => { [0, .14, .28].forEach(w => tone(320, .07, 'square', w, .05, 220)); tone(1046, .2, 'sine', .42, .08); },
+    cheer: () => [784, 988].forEach((f, i) => tone(f, .12, 'sine', i * .08, .08)),
+    go: () => [523, 523, 784].forEach((f, i) => tone(f, i === 2 ? .45 : .15, 'square', i * .35, .07)),
+    fanfare: () => [523, 523, 523, 698, 880].forEach((f, i) => tone(f, i === 4 ? .5 : .12, 'square', i * .12, .06)),
+  };
+
+  /* ---------- Small effects ---------- */
+  let timers = [], loopToken = 0;
+  const later = (fn, ms) => { const id = setTimeout(fn, ms); timers.push(id); return id; };
+  function add(el, ms, parent = fx) { parent.appendChild(el); later(() => el.remove(), ms); return el; }
+  function phase(text) { const p = $('#phase'); p.textContent = text; p.classList.remove('swap'); void p.offsetWidth; p.classList.add('swap'); }
+  function bubble(text, life = 2.6) {
+    document.querySelectorAll('.bubble').forEach(b => b.remove());
+    const b = document.createElement('div'); b.className = 'bubble'; b.textContent = text;
+    b.style.setProperty('--life', life + 's'); add(b, life * 1000, stage);
+  }
+  function burst(kinds, n, x, y, o = {}) {
+    const ring = o.ring ?? 14, spread = o.spread ?? 16, size = o.size ?? [3.6, 6], t = o.t ?? 1400, up = o.up ?? 0;
+    for (let i = 0; i < n; i++) {
+      const kind = rand(kinds), color = kind === 'heart' ? rand(PINKS) : rand(PASTEL);
+      const a = Math.random() * Math.PI * 2, r = spread * (.5 + Math.random() * .5);
+      const p = document.createElement('span'); p.className = 'p'; p.innerHTML = SHAPE[kind](color);
+      p.style.cssText = `--x:${x}%;--y:${y}%;--ox:${(Math.cos(a) * ring).toFixed(1)}cqw;--oy:${(Math.sin(a) * ring).toFixed(1)}cqw;--s:${(size[0] + Math.random() * (size[1] - size[0])).toFixed(1)}cqw;--dx:${(Math.cos(a) * r).toFixed(1)}cqw;--dy:${(Math.sin(a) * r - up).toFixed(1)}cqw;--r:${Math.round((Math.random() - .5) * 120)}deg;--t:${Math.round(t + Math.random() * 500)}ms;animation-delay:${Math.round(Math.random() * 220)}ms`;
+      add(p, t + 900);
+    }
+  }
+  function sticker(text, side, color) {
+    document.querySelectorAll('.sticker').forEach(s => s.remove());
+    const s = document.createElement('div'); s.className = 'sticker'; s.textContent = text;
+    const rot = (side === 'l' ? -1 : 1) * (5 + Math.random() * 6);
+    s.style.cssText = `${side === 'l' ? 'left:calc(var(--sl) + 3cqw)' : 'right:calc(var(--sr) + 3cqw)'};top:${50 + Math.random() * 8}%;--rot:${rot}deg;--c:${color || rand(PASTEL)}`;
+    add(s, 2000, stage); sfx.pop();
+  }
+  function banner(html, o = {}) {
+    const b = document.createElement('div'); b.className = 'banner'; b.innerHTML = html;
+    if (o.fs) b.style.setProperty('--fs', o.fs);
+    if (o.c) b.style.setProperty('--c', o.c);
+    if (o.life) b.style.setProperty('--life', o.life + 's');
+    add(b, (o.life || 2) * 1000 + 100, stage);
+  }
+  function medal(icon, title, sub) {
+    document.querySelectorAll('.medal').forEach(x => x.remove());
+    const m = document.createElement('div'); m.className = 'medal paper';
+    m.innerHTML = `<div class="ic">${icon}</div><div class="t">${title}</div><div class="s">${sub}</div>`;
+    add(m, 2000, stage); sfx.medal();
+  }
+  const DEMO_PH = {
+    shoes: '<span class="e" style="left:38%;top:62%;font-size:10cqw">👟</span><span class="e" style="left:62%;top:66%;font-size:9cqw">👟</span>',
+    stretch: '<span class="e" style="left:20%;top:30%;font-size:7cqw">🌳</span><span class="e bob" style="left:52%;top:62%;font-size:12cqw">🧘</span>',
+    run: '<span class="e" style="left:16%;top:28%;font-size:7cqw">🌳</span><span class="e" style="left:76%;top:28%;font-size:7cqw">🌳</span><span class="mini-run bob">🏃</span>',
+    finish: '<span class="e" style="left:24%;top:50%;font-size:8cqw">🏁</span><span class="e bob" style="left:58%;top:60%;font-size:12cqw">🙌</span>',
+  };
+  const shot = name => { $('#phDemo').innerHTML = DEMO_PH[name] || ''; };
+
+  /* ---------- HUD render ---------- */
+  let lastRank = '';
+  function renderStats(u, final) {
+    const sec = u * run.total, s = sampleAt(run, sec), km = (final ? run.dist : s.d) / 1000, gk = goalKm();
+    $('#vDist').textContent = km.toFixed(2);
+    $('#goalFill').style.width = Math.min(100, km / gk * 100) + '%';
+    $('#vTime').textContent = fmtTime(sec);
+    const pace = final ? run.total / (run.dist / 1000) : paceAt(run, sec), rank = rankFor(pace), pv = $('#vPace');
+    pv.textContent = fmtPace(pace) + (rank ? ' ' + rank : '');
+    if (rank && lastRank && rank !== lastRank) { pv.classList.remove('pop'); void pv.offsetWidth; pv.classList.add('pop'); }
+    lastRank = rank;
+    if (run.hr && s.hr && u > 0) { $('#vHr').textContent = s.hr; $('#beat').style.setProperty('--beat', (60 / s.hr).toFixed(2) + 's'); }
+    else $('#vHr').textContent = '–';
+    $('#vKcal').textContent = kcalFor(km);
+  }
+  function renderCrew(u, final) {
+    const list = crew();
+    $('#crew').classList.toggle('tight', list.length > 3);
+    let total = 0;
+    $('#crewRows').innerHTML = list.map(p => {
+      const gone = p.leaveU != null && u > p.leaveU + 1e-6;
+      const d = final && p.leaveU == null ? p.dist : p.dAt(u); total += d;
+      const done = d >= p.dist - .5, tag = gone ? '👋 กลับก่อน · ' : done && u > 0 ? '🏁 ' : '';
+      return `<div class="crow"${gone ? ' style="opacity:.6"' : ''}><div class="face" style="--c:${p.color}">${faceHtml(p)}</div><div class="nm"><b>${esc(p.name)}</b><span>${tag}${(d / 1000).toFixed(2)} กม.</span></div></div>`;
+    }).join('');
+    $('#crewTotal').textContent = `รวมทั้งก๊วน ${(total / 1000).toFixed(2)} กม.`;
+  }
+  function renderHead() {
+    const list = crew();
+    $('#faces').innerHTML = list.map(p => `<div class="face" style="--c:${p.color}">${faceHtml(p)}</div>`).join('');
+    const pl = place();
+    $('#hudTitle').textContent = (pl ? '📍 ' + pl : 'RUN QUEST') + (list.length > 1 ? ` · ${list.length} คน` : ` · ${list[0].name}`);
+    const d = run.date || new Date();
+    $('#hudDate').textContent = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+  }
+  function renderAll(u, final) { placeChars(u, final); renderStats(u, final); renderCrew(u, final); }
+
+  /* ---------- Phases ---------- */
+  function showQuest(life = 2.6) {
+    closeSummary();
+    const q = document.createElement('div'); q.className = 'quest paper'; q.style.setProperty('--life', life + 's');
+    const n = laps(), c = crew().length;
+    q.innerHTML = `<div class="hd">📜 เควสต์วันนี้!</div><div class="bd">${c > 1 ? `วิ่งด้วยกัน ${c} คน` : 'วิ่ง'} ${goalKm().toFixed(1)} กม.${n > 1 ? ` · ${n} รอบ` : ''}<small>${place() ? '📍 ' + esc(place()) + ' · ' : ''}เพซต่ำกว่า ${fmtPace(goalPace())}${stopList().length ? ' · แวะกิน ' + stopList().map(s => s.emoji).join('') : ''} · ไปด้วยกันจนจบ 💞</small></div>`;
+    add(q, life * 1000, stage); sfx.ping(); phase('📜 รับเควสต์'); setMood('happy', life * 1000); shot('shoes');
+  }
+  function stretch(after, secs) {
+    closeSummary();
+    secs = secs || Math.max(3, Math.round(num('inStretch', 8, 3)));
+    shot('stretch'); phase(after ? '🌿 คูลดาวน์' : '🧘 ยืดเส้น'); setRunning(false);
+    setMood('happy'); sticker(after ? 'ผ่อนคลาย~' : 'ยืดดด~', 'l', after ? '#A8EBD0' : '#CDBEFF');
+    const cl = crew(), me = cl.find(p => p.me), mates = cl.filter(p => !p.me && !(after && p.leaveU != null));
+    if (mates.length && secs >= 3) {
+      const snack = stopList().find(s => !s.closed);
+      const talk = after
+        ? [[mates[0], 'ยืดเยอะๆ นะ พรุ่งนี้จะได้ไม่ปวด'], [me, 'ขอบคุณที่มาวิ่งด้วยกันน้า 💕']]
+        : [[mates[0], `วันนี้วิ่ง ${laps()} รอบนะ!`], [me, snack ? `เสร็จแล้วไปกิน${snack.name}กัน 🤤` : 'ลุยยย! 💪']];
+      talk.forEach(([p, t], i) => later(() => sayOnMap(p, t), 300 + i * LINE * 1000));
+    } else bubble(after ? 'ขอบคุณร่างกายนะวันนี้ 💖' : 'วอร์มก่อน ไม่งั้นตะคริวกิน!', Math.min(3, secs));
+    document.querySelectorAll('.ring').forEach(r => r.remove());
+    const ring = document.createElement('div'); ring.className = 'ring'; const C = 2 * Math.PI * 40;
+    ring.innerHTML = `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="#fff" ${sw(3.5)}/><circle cx="50" cy="50" r="40" fill="none" stroke="#EFE7F7" stroke-width="8"/>
+      <circle class="arc" cx="50" cy="50" r="40" fill="none" stroke="${after ? '#A8EBD0' : '#CDBEFF'}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="0" transform="rotate(-90 50 50)"/></svg>
+      <div class="num"><span class="n">${secs}</span><small>วิ</small></div>`;
+    stage.appendChild(ring);
+    const arc = $('.arc', ring), numEl = $('.n', ring), t0 = performance.now(), token = ++loopToken;
+    let shown = secs;
+    const step = now => {
+      if (token !== loopToken) { ring.remove(); return; }
+      const el = (now - t0) / 1000, left = Math.max(0, secs - el);
+      arc.setAttribute('stroke-dashoffset', (C * Math.min(1, el / secs)).toFixed(1));
+      const show = Math.ceil(left);
+      if (show !== shown) { shown = show; numEl.textContent = show; sfx.tick(); }
+      if (left > 0) return requestAnimationFrame(step);
+      ring.classList.add('out'); setTimeout(() => ring.remove(), 400);
+      banner(after ? 'คูลดาวน์เสร็จ!<small>ร่างกายขอบคุณนะ 💖</small>' : 'พร้อมลุย!<small>วอร์มอัป 100%</small>', { c: after ? '#A8EBD0' : '#FFE27A', fs: '7.6cqw' });
+      burst(['spark', 'heart', 'dot'], 10, 46, 47, { ring: 14, spread: 16 });
+      setMood('star', 1800); sfx.ping();
+    };
+    requestAnimationFrame(step);
+  }
+  const CHEERS = ['สู้ๆ นะ!', 'อีกนิดเดียว!', 'เพซดีมากเลย!', 'หายใจลึกๆ~', 'ไปด้วยกันนะ 💞', 'หิวแล้วอะ 🤤', 'ใครช้าสุดเลี้ยงข้าวนะ!'];
+  const SNACK_LINES = ['ขอแวะแป๊บ!', 'วิ่งเพื่อกิน 🤤', 'แค่ชิมเฉยๆ นะ', 'เผาแล้วต้องเติม!', 'อันนี้ไม่นับ 🤫'];
+  /* ---------- Dialogue scenes ---------- */
+  const NS = 'http://www.w3.org/2000/svg';
+  const LINE = 1.3, FIN_LINES = 4;
+  const REASON_LABEL = { pain: 'เจ็บขา 🦵', errand: 'มีธุระ 🏃', mom: 'แม่โทรตาม 📞', sleepy: 'ง่วงนอน 😴' };
+  // Goodbye scenes: [leaver, me, leaver, someone else, leaver]
+  const LEAVE_TALK = {
+    pain: ['โอ๊ย ขาเริ่มตึงแล้วอะ 😣', 'ไหวมั้ย? พักก่อนก็ได้นะ', 'ขอกลับก่อนนะ ไปนวดขาดีกว่า 🦵', 'ระวังตัวนะ! เดี๋ยวส่งรูปให้ 💕', 'บ๊ายบาย สู้ๆ นะ 👋'],
+    errand: ['ตายแล้ว ลืมว่ามีธุระ 😱', 'อ้าว! ไปไหนอะ', 'ต้องไปรับของ ขอกลับก่อนนะ 🙏', 'ไม่เป็นไร ไว้วิ่งด้วยกันใหม่!', 'บ๊ายบาย 👋'],
+    mom: ['แม่โทรมาแล้ว 📞', 'เรื่องอะไรอะ?', 'ให้กลับไปกินข้าว 😂', 'ฝากบอกแม่ว่าเราก็หิว 🤤', 'บ๊ายบาย 👋'],
+    sleepy: ['หาววว ง่วงมากเลย 😴', 'เมื่อคืนนอนกี่โมงเนี่ย', 'ตีสาม... ดูซีรีส์ 🫣', 'กลับไปนอนเลย ไป๊! 😆', 'ฝันดีนะ บ๊ายบาย 👋'],
+  };
+  const pauseFor = type => (type === 'snack' ? 3 : type === 'closed' ? 4 : 5) * LINE + .7;
+  function linesFor(e, me, mates) {
+    const F = mates.length ? rand(mates) : me, G = mates.length > 1 ? rand(mates.filter(q => q !== F)) : me;
+    const G2 = G === me ? F : G;
+    if (e.type === 'snack') return [[F, `ถึงร้าน${e.s.name}แล้ว! ${e.s.emoji}`], [me, rand(['แวะแป๊บเดียวนะ 🤭', 'ขอชิมนิดนึง 🤤', 'เติมพลังก่อน!'])], [G2, rand(['เอาสองไม้!', 'อันนี้ไม่นับแคลนะ 🤫', 'กินเสร็จวิ่งต่อ... มั้ง 😆', 'อร่อยจนลืมวิ่ง 😋'])]];
+    if (e.type === 'closed') return [[F, `เอ๊ะ... ร้าน${e.s.name}ปิด?!`], [me, 'ไม่นะะะ 😭'], [G2, rand(['อดกินแล้วเรา 🥲', 'วันนี้ป้าไม่มา 🥺', 'ท้องร้องแล้วเนี่ย 😵'])], [me, rand(['งั้นวิ่งต่อ... ด้วยความหิว 💪', 'ไว้มาใหม่พรุ่งนี้ 🥹'])]];
+    const L = e.p, other = mates.find(q => q.id !== L.id) || me, t = LEAVE_TALK[L.reason] || LEAVE_TALK.pain;
+    return [[L, t[0]], [me, t[1]], [L, t[2]], [other, t[3]], [L, t[4]]];
+  }
+  function finishLines(list) {
+    const me = list.find(p => p.me), mates = list.filter(p => !p.me && p.leaveU == null), gone = list.find(p => p.leaveU != null);
+    if (!mates.length) return [[me, 'ถึงแล้ววว! 🎉'], [me, 'เหนื่อยแต่ฟินมาก 💞'], [me, gone ? `คราวหน้า${gone.name}ต้องวิ่งจนจบนะ!` : 'พรุ่งนี้มาใหม่!'], [me, 'ไปหาอะไรกินดีกว่า 🤤']];
+    const F = mates[0];
+    return [[F, 'ถึงแล้ววว! 🎉'], [me, 'เหนื่อยแต่สนุกมาก 💞'], [F, rand(['พรุ่งนี้วิ่งอีกมั้ย?', 'รอบหน้าเพิ่มอีกรอบนะ!'])], [me, gone ? `ได้! คราวหน้า${gone.name}ต้องมาให้ครบ 💕` : rand(['ถ้ามีลูกชิ้นก็ไป 🤣', 'ไปกินต่อกันเถอะ 🤤'])]];
+  }
+  // Everything that pauses the run, in order: snack stops, closed shops, friends heading home.
+  function eventList(list) {
+    const ev = [];
+    stopList().forEach(s => ev.push({ type: s.closed ? 'closed' : 'snack', u: s.u, s }));
+    list.filter(p => p.leaveU != null).forEach(p => ev.push({ type: 'leave', u: p.leaveU, p }));
+    ev.sort((a, b) => a.u - b.u);
+    const me = list.find(p => p.me);
+    ev.forEach(e => {
+      const mates = list.filter(q => !q.me && !(q.leaveU != null && q.leaveU < e.u - 1e-6) && !(e.type === 'leave' && q.id === e.p.id));
+      e.lines = linesFor(e, me, mates); e.pause = pauseFor(e.type);
+    });
+    return ev;
+  }
+  function sayOnMap(p, text, ms = LINE * 1000 - 60) {
+    const pos = lastPos[p.id]; if (!pos) return;
+    mapSvg.querySelectorAll('.say-wrap').forEach(n => n.remove());
+    const fs = 3.3, w = Math.min(mapW - 4, [...text].length * fs * .5 + 5), h = fs + 3;
+    let y = pos.y - 19 * charScale - h - 2.2, below = false;
+    if (y < 2) { y = pos.y + 2.6; below = true; }
+    const bx = Math.max(2, Math.min(mapW - 2 - w, pos.x - w / 2)), tx = Math.max(bx + 3, Math.min(bx + w - 3, pos.x));
+    const tail = below ? `M${(tx - 1.7).toFixed(1)} ${(y + .4).toFixed(1)}L${tx.toFixed(1)} ${(y - 2).toFixed(1)}L${(tx + 1.7).toFixed(1)} ${(y + .4).toFixed(1)}`
+      : `M${(tx - 1.7).toFixed(1)} ${(y + h - .4).toFixed(1)}L${tx.toFixed(1)} ${(y + h + 2.2).toFixed(1)}L${(tx + 1.7).toFixed(1)} ${(y + h - .4).toFixed(1)}`;
+    const g = document.createElementNS(NS, 'g'); g.setAttribute('class', 'say-wrap');
+    g.innerHTML = `<g class="say"><rect x="${bx.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${(h / 2).toFixed(1)}" fill="#fff" stroke="${p.color}" stroke-width=".8"/>
+      <path d="${tail}" fill="#fff" stroke="${p.color}" stroke-width=".8" stroke-linejoin="round"/>
+      <text x="${(bx + w / 2).toFixed(1)}" y="${(y + h / 2 + .2).toFixed(1)}" text-anchor="middle" dominant-baseline="central" font-family="Sriracha, sans-serif" font-size="${fs}" fill="${INK}">${esc(text)}</text></g>`;
+    mapSvg.appendChild(g); later(() => g.remove(), ms); sfx.blip();
+  }
+  function foodPop(s, icon, label, color) {
+    const c = cartPositions().find(k => k.s.km === s.km) || { x: posAt(0).x, y: posAt(0).y };
+    const g = document.createElementNS(NS, 'g');
+    g.setAttribute('transform', `translate(${c.x.toFixed(1)} ${(c.y - 15).toFixed(1)})`);
+    g.innerHTML = `<g class="foodpop"><circle r="5" fill="#fff" stroke="${INK}" stroke-width=".6"/><text text-anchor="middle" dominant-baseline="central" font-size="6" y=".3">${icon}</text>
+      <text y="-7.2" text-anchor="middle" font-family="Sriracha, sans-serif" font-size="3.3" fill="${color}" stroke="#fff" stroke-width="1" paint-order="stroke">${label}</text></g>`;
+    mapSvg.appendChild(g); later(() => g.remove(), 2300);
+  }
+  function runEvent(e) {
+    setRunning(false);
+    e.lines.forEach(([p, txt], i) => later(() => sayOnMap(p, txt), 250 + i * LINE * 1000));
+    if (e.type === 'leave') {
+      phase(`👋 ${e.p.name} ขอกลับก่อน`); setMood('tired', 2600);
+      later(() => { sticker('บ๊ายบาย 👋', 'r', '#CDBEFF'); sfx.bye(); }, 250 + (e.lines.length - 1) * LINE * 1000);
+      return;
+    }
+    if (e.type === 'closed') {
+      phase(`🔒 ร้าน${e.s.name}ปิด!`); setMood('tired', 3500); sfx.sad();
+      foodPop(e.s, '💤', 'ร้านปิด 😭', '#5AAEF0');
+      later(() => sticker(rand(['อด!!! 😭', 'ป้าไม่มา 🥲', 'ฮือออ 😭']), 'l', '#9FD8FF'), LINE * 1000);
+      return;
+    }
+    phase(`${e.s.emoji} แวะกิน (ไม่นับเวลา 🤫)`); setMood('happy', 3000); sfx.munch();
+    foodPop(e.s, e.s.emoji, `+${e.s.kcal} kcal 😋`, '#FF6F7F');
+    later(() => sticker(rand(SNACK_LINES), rand(['l', 'r']), '#FFE27A'), LINE * 1000);
+    burst(['heart', 'dot'], 6, 46, 44, { ring: 10, spread: 12, size: [3, 4.5] });
+  }
+  function runPlay(durSec) {
+    closeSummary();
+    durSec = durSec || num('inPlay', 15, 5);
+    shot('run'); phase('🏃 วิ่งด้วยกัน');
+    const pv = $('#pipVid'); if (stage.classList.contains('has-pipvid')) { try { pv.currentTime = 0; const r = pv.play(); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+    banner('3 · 2 · 1 GO!', { c: '#FFB3CF', fs: '9cqw', life: 1.4 }); sfx.go();
+    setMood('idle');
+    const token = ++loopToken, t0 = performance.now() + 900;
+    const n = laps(), unit = n > 1 ? run.dist / n : 1000, splits = splitsBy(run, unit), others = crew().filter(p => !p.me);
+    const list0 = crew(), evs = eventList(list0), totalSec = durSec + evs.reduce((a, e) => a + e.pause, 0);
+    const presentAt = uu => others.filter(p => !(p.leaveU != null && uu > p.leaveU));
+    // Clip time → run progress, holding still for a moment at each snack stop.
+    const timeline = e => {
+      let prevU = 0, acc = 0;
+      for (let i = 0; i < evs.length; i++) {
+        const seg = Math.max(0, evs[i].u - prevU) * durSec;
+        if (e < acc + seg) return { u: prevU + (e - acc) / durSec, stop: -1 };
+        acc += seg;
+        if (e < acc + evs[i].pause) return { u: evs[i].u, stop: i };
+        acc += evs[i].pause; prevU = Math.max(prevU, evs[i].u);
+      }
+      return { u: Math.min(1, prevU + (e - acc) / durSec), stop: -1 };
+    };
+    let nextMark = 1, sprinted = false, lastLapBanner = false, started = false, curStop = -1;
+    const cheerAt = [.3, .58], warned = new Set();
+    const step = now => {
+      if (token !== loopToken) return;
+      const e = Math.max(0, (now - t0) / 1000), tl = timeline(e);
+      const final = e >= totalSec, u = final ? 1 : Math.max(0, Math.min(1, tl.u));
+      if (!started && e > 0) { started = true; setRunning(true); }
+      if (tl.stop !== curStop && !final) {
+        if (tl.stop >= 0) runEvent(evs[tl.stop]);
+        else { setRunning(true); phase('🏃 วิ่งต่อ!'); }
+        curStop = tl.stop;
+      }
+      const d = final ? run.dist : sampleAt(run, u * run.total).d;
+      renderAll(u, final);
+      if (tl.stop >= 0 && !final) return requestAnimationFrame(step);
+      evs.forEach((ev, i) => {
+        if (ev.type === 'leave' || warned.has(i) || u < ev.u - .07 || u >= ev.u) return;
+        warned.add(i); const pr = presentAt(u);
+        bubble(`${pr.length ? rand(pr).name : 'มาสคอต'}: อีกนิดถึงร้าน${ev.s.name}แล้ว 🤤`, 2);
+      });
+      while (d >= nextMark * unit - .5 && nextMark <= Math.floor(run.dist / unit + .001) && (n === 1 || nextMark <= n)) {
+        const sp = splits[nextMark - 1];
+        if (n > 1) medal('🔁', `ครบรอบ ${nextMark}!`, sp ? fmtTime(sp.sec) : '');
+        else medal('🏅', `KM ${nextMark}!`, sp ? fmtPace(sp.sec) + '/กม.' : '');
+        nextMark++;
+      }
+      if (n > 1 && !lastLapBanner && d >= (n - 1) * unit) { lastLapBanner = true; banner('รอบสุดท้าย!<small>ไปด้วยกันอีกนิด 🔥</small>', { c: '#FFC9A3', fs: '7.6cqw' }); }
+      if (cheerAt.length && u >= cheerAt[0]) {
+        cheerAt.shift();
+        const pr = presentAt(u), who = pr.length ? rand(pr).name : 'มาสคอต';
+        bubble(`${who}: ${rand(CHEERS)}`, 2.2); sfx.cheer(); setMood('happy', 1500);
+      }
+      if (!sprinted && u >= .84) {
+        sprinted = true; phase('🔥 สปรินต์!'); setMood('tired'); sfx.whoosh(); sticker('ฮึบบบ!', 'r', '#FFB3CF');
+        ['l', 'r'].forEach(side => { for (let i = 0; i < 4; i++) {
+          const z = document.createElement('span'); z.className = 'zline';
+          z.style.cssText = `${side === 'l' ? 'left:calc(var(--sl) + 1cqw)' : 'right:calc(var(--sr) + 1cqw)'};top:${44 + i * 5}%;width:${6 + Math.random() * 6}cqw;--from:${side === 'l' ? '-5cqw' : '5cqw'};animation-delay:${i * 90}ms`;
+          add(z, 2000, stage);
+        } });
+      }
+      if (!final) return requestAnimationFrame(step);
+      setRunning(false); shot('finish'); phase('🏁 เข้าเส้นชัย!');
+      banner(`FINISH!<small>${(run.dist / 1000).toFixed(2)} กม. · ${fmtTime(run.total)}</small>`, { c: '#FFE27A', fs: '9.5cqw', life: 2.2 });
+      if ($('#inChat').checked) finishLines(list0).forEach(([p, txt], i) => later(() => sayOnMap(p, txt), 1500 + i * LINE * 1000));
+      burst(['star', 'heart', 'spark', 'dot'], 20, 46, 47, { ring: 16, spread: 22, t: 1700 });
+      setMood('star', 2400); sfx.fanfare();
+    };
+    requestAnimationFrame(step);
+  }
+
+  /* ---------- Summary ---------- */
+  const FOODS = [
+    { n: 'ชานมไข่มุก', u: 'แก้ว', e: '🧋', k: 350 }, { n: 'โดนัท', u: 'ชิ้น', e: '🍩', k: 250 },
+    { n: 'ไอศกรีม', u: 'ลูก', e: '🍦', k: 140 }, { n: 'ข้าวมันไก่', u: 'จาน', e: '🍗', k: 600 }, { n: 'ช็อกโกแลต', u: 'แท่ง', e: '🍫', k: 230 },
+  ];
+  let summaryEl = null;
+  function closeSummary() { if (summaryEl) { summaryEl.remove(); summaryEl = null; } }
+  function showSummary() {
+    if (summaryEl) { closeSummary(); return; }
+    loopToken++; setRunning(false);
+    document.querySelectorAll('.bubble, .ring, .medal, .quest, .sticker').forEach(b => b.remove());
+    renderAll(1, true);
+    const km = run.dist / 1000, pace = run.total / km, gk = goalKm(), gp = goalPace(), n = laps(), list = crew();
+    const passDist = km >= gk - .005, passPace = pace <= gp;
+    const g = passDist && passPace ? (pace <= gp - 20 ? 'S' : 'A') : passDist ? 'B' : 'C';
+    const color = { S: '#FFE27A', A: '#FFB3CF', B: '#CDBEFF', C: '#9FD8FF' }[g];
+    const kcal = kcalFor(km), stl = stopList(), ate = stl.filter(s => !s.closed).reduce((a, s) => a + s.kcal, 0), net = ate - kcal;
+    const openE = stl.filter(s => !s.closed).map(s => s.emoji).join(' '), closedE = stl.filter(s => s.closed).map(s => s.emoji).join(' ');
+    const verdict = net > 0 ? 'วิ่งเพื่อกินชัดๆ 🤣' : net > -60 ? 'เสมอตัวพอดีเป๊ะ 😆' : 'ยังขาดทุน กินเพิ่มได้อีก! 😋';
+    const food = FOODS.map(f => ({ ...f, r: kcal / f.k })).sort((a, b) => Math.abs(Math.log(a.r)) - Math.abs(Math.log(b.r)))[0];
+    const team = list.length > 1 ? `<div class="team">${list.map((p, i) => `<div class="tr" style="animation-delay:${(.5 + i * .1).toFixed(2)}s"><span class="face" style="--c:${p.color}">${faceHtml(p)}</span><b>${esc(p.name)}</b><span>${p.leaveU != null ? `👋 กลับก่อน (${REASON_LABEL[p.reason] || ''}) · ${(p.leftDist / 1000).toFixed(2)} กม.` : `${(p.dist / 1000).toFixed(2)} กม. · ${fmtTime(p.total)} · ${fmtPace(p.total / (p.dist / 1000))}`}</span></div>`).join('')}</div>` : '';
+    const unit = n > 1 ? run.dist / n : 1000, sp = splitsBy(run, unit).slice(0, 8);
+    const paces = sp.map(s => s.full ? s.sec : s.sec / s.part), lo = Math.min(...paces), hi = Math.max(...paces);
+    const bars = sp.map((s, i) => {
+      const h = hi - lo < 1 ? 70 : 35 + 65 * (hi - paces[i]) / (hi - lo);
+      return `<div class="bar"><span>${n > 1 ? fmtTime(s.sec) : fmtPace(paces[i])}</span><i style="height:${h.toFixed(0)}%;--c:${PASTEL[i % PASTEL.length]};animation-delay:${(.6 + i * .08).toFixed(2)}s"></i><span>${s.full ? (n > 1 ? 'รอบ ' + s.n : 'กม.' + s.n) : '+' + s.part.toFixed(1)}</span></div>`;
+    }).join('');
+    const total = list.reduce((a, p) => a + (p.leftDist ?? p.dist), 0) / 1000;
+    const card = document.createElement('div'); card.className = 'summary paper';
+    card.innerHTML = `<div class="badge">${flowerSvg(color)}<b>${g}</b>${g === 'S' ? CROWN : ''}</div>
+      <div class="info">
+        <div class="ttl2">${passDist && passPace ? '🏆 เควสต์สำเร็จ!' : passDist ? '💪 วิ่งครบแล้ว!' : '🌱 เกือบแล้ว พรุ่งนี้เอาใหม่!'}${list.length > 1 ? ` วิ่งด้วยกัน ${list.length} คน` : ''}</div>
+        ${place() ? `<div class="ln">📍 ${esc(place())}</div>` : ''}
+        <div class="ln">📏 ${km.toFixed(2)} กม.${n > 1 ? ` · ${n} รอบ` : ''} · ⏱️ ${fmtTime(run.total)} · ⚡ ${fmtPace(pace)}</div>
+        <div class="ln">🔥 ${kcal} kcal${run.avgHr ? ` · ❤️ ${run.avgHr}` : ''}${list.length > 1 ? ` · 👯 รวม ${total.toFixed(2)} กม.` : ''}</div>
+        ${stl.length ? `<div class="food">${openE ? `😋 แวะกิน ${openE} กินคืน ${ate} kcal` : ''}${closedE ? `${openE ? ' · ' : ''}อด ${closedE} ร้านปิด 😭` : ''}</div>` : `<div class="food">= ${food.e} ${food.n} ${food.r.toFixed(1)} ${food.u} (โดยประมาณ)</div>`}
+      </div>
+      ${ate ? `<div class="calbal">⚖️ กิน ${ate} − เผา ${kcal} = ${net > 0 ? '+' : ''}${net} kcal · ${verdict}</div>` : ''}
+      ${team}
+      ${sp.length > 1 ? `<div class="splits"><div class="lbl">${n > 1 ? 'เวลาแต่ละรอบของคุณ' : 'เพซแต่ละกิโลของคุณ'} (แท่งสูง = เร็ว)</div><div class="bars">${bars}</div></div>` : ''}`;
+    mapwrap.appendChild(card); summaryEl = card;
+    phase('🏆 สรุปผล'); setMood(g === 'S' || g === 'A' ? 'star' : 'happy', 3000); sfx.fanfare();
+    if (g === 'S' || g === 'A') later(() => burst(['star', 'heart', 'spark', 'dot'], 24, 46, 40, { ring: 18, spread: 26, t: 1800 }), 500);
+  }
+
+  /* ---------- Reset / modes ---------- */
+  function reset() {
+    timers.forEach(clearTimeout); timers = []; loopToken++; clearTimeout(moodTimer);
+    closeSummary(); fx.innerHTML = '';
+    document.querySelectorAll('.bubble, .ring, .medal, .quest, .sticker, .banner, .zline').forEach(e => e.remove());
+    setMood('idle'); lastRank = '';
+    shot('shoes'); phase('👟 เตรียมตัว');
+    renderHead(); buildMap(); renderAll(0, false);
+    $('#vPace').textContent = '–';
+    $('#prog').style.width = '0%';
+    document.querySelectorAll('.sb li').forEach(li => li.classList.remove('now', 'past'));
+    if (state.mode === 'reel') prepareReel();
+  }
+  let playing = false, t0demo = 0;
+  const saved = {};
+  function setMode(m) {
+    if (m === 'demo') {
+      ['inGoalDist', 'inGoalPace', 'inLaps'].forEach(id => { saved[id] = $('#' + id).value; });
+      $('#inGoalDist').value = 3; $('#inGoalPace').value = '6:30'; $('#inLaps').value = 3;
+      friends = DEMO_FRIENDS; run = DEMO_RUN; stops = DEMO_STOPS; state.savedMapMode = state.mapMode; state.mapMode = 'auto';
+    } else if (state.mode === 'demo') {
+      Object.keys(saved).forEach(id => { $('#' + id).value = saved[id]; });
+      friends = liveFriends; run = liveRun; stops = liveStops; state.mapMode = state.savedMapMode || 'auto';
+    }
+    if (m !== 'reel' && state.mode === 'reel') { reelStop(); muteAllVideo(); }
+    state.mode = m; document.body.dataset.mode = m;
+    $('#tabLive').setAttribute('aria-selected', m === 'live');
+    $('#tabDemo').setAttribute('aria-selected', m === 'demo');
+    $('#tabReel').setAttribute('aria-selected', m === 'reel');
+    playing = false; reset();
+    if (m === 'demo') { SB = buildSchedule(4, 12, 3).board; renderBoardList(); $('#cover').hidden = false; }
+  }
+
+  /* ---------- Sample clip ---------- */
+  let SB = [], END = 60;
+  function renderBoardList() {
+    $('#sb').innerHTML = '';
+    SB.forEach(b => {
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="t">${fmtTime(b.t)}</span><div><div class="h"></div><div class="d"></div></div>${b.k ? `<kbd>${b.k}</kbd>` : '<span></span>'}`;
+      $('.h', li).textContent = b.h; $('.d', li).textContent = b.d;
+      $('#sb').appendChild(li);
+    });
+  }
+  // One schedule drives both the sample clip and the auto-play / recording of your own clip.
+  function buildSchedule(sSec, D, cool) {
+    const list = crew(), evs = eventList(list), chat = $('#inChat').checked;
+    const t1 = 3, t2 = t1 + sSec + 1.2;
+    const board = [
+      { t: 0, h: '📜 รับเควสต์', d: 'ถ่ายตอนผูกเชือกรองเท้า ใส่ในจอเล็ก', k: 'Q' },
+      { t: t1, h: '🧘 ยืดก่อนวิ่ง', d: list.length > 1 ? 'ยืดเส้นด้วยกัน ตัวละครคุยกันบนแผนที่' : 'ยืดเส้น มีวงนับถอยหลัง', k: '1' },
+      { t: t2, h: '🏃 วิ่งด้วยกัน', d: 'ตัวละครวิ่งวนบนแผนที่ จอเล็กเป็นคลิปวิ่งจริง', k: '2' },
+    ];
+    let acc = 0;
+    evs.forEach(e => {
+      const t = t2 + .9 + e.u * D + acc; acc += e.pause;
+      if (e.type === 'snack') board.push({ t, h: `${e.s.emoji} แวะ${e.s.name}`, d: 'หยุดกินด้วยกัน คุยกันฮาๆ เวลาไม่เดิน 🤫', k: '' });
+      else if (e.type === 'closed') board.push({ t, h: `🔒 ร้าน${e.s.name}ปิด`, d: 'มาถึงแล้วร้านไม่เปิด อดกิน 😭', k: '' });
+      else board.push({ t, h: `👋 ${e.p.name} ขอกลับก่อน`, d: `${REASON_LABEL[e.p.reason] || ''} คุยบอกลากัน แล้วเดินออกจากแผนที่`, k: '' });
+    });
+    const runEnd = t2 + .9 + D + acc, fin = chat ? FIN_LINES * LINE + .8 : 0;
+    const t3 = runEnd + 2.6 + fin, t4 = t3 + cool + 1.2, end = t4 + 6;
+    board.push({ t: runEnd, h: '🏁 เข้าเส้นชัย', d: chat ? 'ถึงแล้ว! คุยกันตอนจบแบบน่ารักๆ' : 'ถ่ายตอนหยุดหอบ ชูมือด้วยกัน', k: '' });
+    board.push({ t: t3, h: '🌿 ยืดหลังวิ่ง', d: 'ยืดคูลดาวน์สั้นๆ', k: '3' });
+    board.push({ t: t4, h: '🏆 สรุปผล', d: 'ผลทุกคน ใครกลับก่อน และสมดุลแคลอรีแบบฮาๆ', k: '4' });
+    const steps = [[0, () => showQuest(2.6)], [t1, () => stretch(false, sSec)], [t2, () => runPlay(D)], [t3, () => stretch(true, cool)], [t4, () => showSummary()]];
+    return { steps, board, end };
+  }
+  function playDemo() {
+    if (state.mode !== 'demo') setMode('demo'); else reset();
+    const sc = buildSchedule(4, 12, 3); SB = sc.board; END = sc.end; renderBoardList();
+    $('#cover').hidden = true; playing = true; t0demo = performance.now();
+    sc.steps.forEach(([t, fn]) => later(fn, t * 1000));
+    later(() => { playing = false; $('#cover').hidden = false; $('.lbl', $('#cover')).innerHTML = `ดูอีกรอบ<small>ประมาณ ${Math.round(END)} วินาที</small>`; }, END * 1000);
+    requestAnimationFrame(tick);
+  }
+  function tick(now) {
+    if (!playing) return;
+    const sec = (now - t0demo) / 1000;
+    $('#prog').style.width = Math.min(100, sec / END * 100) + '%';
+    let cur = 0; SB.forEach((b, i) => { if (sec >= b.t) cur = i; });
+    document.querySelectorAll('.sb li').forEach((li, i) => { li.classList.toggle('now', i === cur); li.classList.toggle('past', i < cur); });
+    requestAnimationFrame(tick);
+  }
+
+  /* ---------- Panel: friends ---------- */
+  function readFile(file, as, cb) { if (!file) return; const r = new FileReader(); r.onload = () => cb(r.result); r[as](file); }
+  function renderFriendList() {
+    const box = $('#friendList'); box.innerHTML = '';
+    liveFriends.forEach((f, i) => {
+      const item = document.createElement('div'); item.className = 'fitem';
+      const row = document.createElement('div'); row.className = 'fr';
+      row.innerHTML = `<label class="pick" style="--c:${COLORS[i + 1]}" aria-label="รูปหน้าเพื่อน">${f.face ? `<img src="${f.face}" alt="">` : EMOJI[i + 1]}<input type="file" accept="image/*"></label>
+        <input type="text" maxlength="14" aria-label="ชื่อเพื่อน">
+        <label class="gpxbtn${f.run ? ' ok' : ''}">${f.run ? `GPX ✓ ${(f.run.dist / 1000).toFixed(1)}` : '📁 GPX'}<input type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml" aria-label="ไฟล์ GPX ของเพื่อน"></label>
+        <button class="xbtn" type="button" aria-label="ลบเพื่อน">✕</button>`;
+      const [faceIn, gpxIn] = row.querySelectorAll('input[type="file"]');
+      const nameIn = row.querySelector('input[type="text"]'); nameIn.value = f.name;
+      faceIn.addEventListener('change', e => readFile(e.target.files[0], 'readAsDataURL', url => { f.face = url; renderFriendList(); refresh(); }));
+      gpxIn.addEventListener('change', e => readFile(e.target.files[0], 'readAsText', txt => {
+        try { f.run = parseGpx(txt); setStatus(`ใส่ GPX ของ ${f.name || 'เพื่อน'} แล้ว: ${(f.run.dist / 1000).toFixed(2)} กม. · ${fmtTime(f.run.total)}`); }
+        catch (err) { setStatus(`GPX ของ ${f.name || 'เพื่อน'}: ${err.message}`, 'err'); }
+        renderFriendList(); refresh();
+      }));
+      nameIn.addEventListener('input', e => { f.name = e.target.value.trim(); if (state.mode === 'live') { renderHead(); buildMap(); renderAll(0, false); } else if (state.mode === 'reel') reset(); });
+      row.querySelector('.xbtn').addEventListener('click', () => { liveFriends.splice(i, 1); renderFriendList(); refresh(); });
+      const r2 = document.createElement('div'); r2.className = 'fr2';
+      r2.innerHTML = `<input type="number" step="0.1" min="0" placeholder="กลับก่อนที่ กม." aria-label="กลับก่อนที่กิโล (เว้นว่างถ้าวิ่งจนจบ)">
+        <select aria-label="เหตุผลที่กลับก่อน">${Object.entries(REASON_LABEL).map(([k, v]) => `<option value="${k}"${k === (f.reason || 'pain') ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
+      const [lk, rs] = r2.children; lk.value = f.leaveKm || '';
+      lk.addEventListener('change', () => { f.leaveKm = parseFloat(lk.value) || null; refresh(); });
+      rs.addEventListener('change', () => { f.reason = rs.value; refresh(); });
+      item.append(row, r2); box.appendChild(item);
+    });
+    $('#btnAddFriend').hidden = liveFriends.length >= 3;
+  }
+  function refresh() { if (state.mode !== 'demo') { friends = liveFriends; reset(); } }
+  $('#btnAddFriend').addEventListener('click', () => {
+    if (liveFriends.length >= 3) return;
+    liveFriends.push({ name: ['เพื่อนกระต่าย', 'เพื่อนแพนด้า', 'เพื่อนหมี'][liveFriends.length] || 'เพื่อน', face: null, run: null });
+    renderFriendList(); refresh();
+  });
+
+  /* ---------- Panel: data, map, video ---------- */
+  function setStatus(text, kind) { const s = $('#dataStatus'); s.textContent = text; s.className = 'status' + (kind ? ' ' + kind : ''); }
+  function useRun(r, label) {
+    liveRun = r; if (state.mode !== 'demo') { run = r; reset(); }
+    const ns = r.stops ? r.stops.length : 0;
+    $('#btnGpxStops').hidden = !ns;
+    setStatus(`${label}: ${(r.dist / 1000).toFixed(2)} กม. · ${fmtTime(r.total)} · เพซ ${fmtPace(r.total / (r.dist / 1000))}${r.avgHr ? ` · หัวใจ ${r.avgHr}` : ''}${r.lat ? ' · มีรูปทรงเส้นทางจริง' : ''}${ns ? ` · เจอจุดหยุดนาน ${ns} จุด (น่าจะแวะกิน 👀)` : ''}`);
+  }
+
+  /* ---------- Panel: place + snack stops ---------- */
+  function renderStopList() {
+    const box = $('#stopList'); box.innerHTML = '';
+    liveStops.forEach((s, i) => {
+      const row = document.createElement('div'); row.className = 'fr stop';
+      row.innerHTML = `<select aria-label="ของกิน">${Object.keys(FOOD_KCAL).map(e => `<option${e === s.emoji ? ' selected' : ''}>${e}</option>`).join('')}</select>
+        <input type="text" maxlength="16" aria-label="ชื่อร้าน">
+        <input type="number" step="0.1" min="0.1" aria-label="กิโลที่แวะ" class="km">
+        <input type="number" step="10" min="0" aria-label="แคลอรี" class="kc">
+        <button class="lock" type="button" aria-pressed="${!!s.closed}" aria-label="ร้านปิด (อดกิน)" title="${s.closed ? 'ร้านปิด อด!' : 'ร้านเปิด'}">${s.closed ? '🔒' : '🟢'}</button>
+        <button class="xbtn" type="button" aria-label="ลบจุดแวะกิน">✕</button>`;
+      const [sel] = row.querySelectorAll('select'), name = row.querySelector('input[type="text"]'), km = row.querySelector('.km'), kc = row.querySelector('.kc');
+      name.value = s.name; km.value = s.km; kc.value = s.kcal;
+      sel.addEventListener('change', () => { s.emoji = sel.value; s.kcal = FOOD_KCAL[s.emoji]; kc.value = s.kcal; refresh(); });
+      name.addEventListener('change', () => { s.name = name.value.trim(); refresh(); });
+      km.addEventListener('change', () => { s.km = parseFloat(km.value) || 0; refresh(); });
+      kc.addEventListener('change', () => { s.kcal = parseFloat(kc.value) || 0; refresh(); });
+      row.querySelector('.lock').addEventListener('click', () => { s.closed = !s.closed; renderStopList(); refresh(); });
+      row.querySelector('.xbtn').addEventListener('click', () => { liveStops.splice(i, 1); renderStopList(); refresh(); });
+      box.appendChild(row);
+    });
+    $('#btnAddStop').hidden = liveStops.length >= 3;
+  }
+  $('#btnAddStop').addEventListener('click', () => {
+    if (liveStops.length >= 3) return;
+    const opts = [{ emoji: '🧋', name: 'ชานมไข่มุก' }, { emoji: '🍦', name: 'ไอติมหลอด' }, { emoji: '🍢', name: 'หมูปิ้ง' }][liveStops.length] || { emoji: '🍌', name: 'กล้วย' };
+    const last = liveStops.length ? liveStops[liveStops.length - 1].km : 0;
+    liveStops.push({ ...opts, km: +Math.min(liveRun.dist / 1000 - .2, last + .8).toFixed(1), kcal: FOOD_KCAL[opts.emoji] });
+    renderStopList(); refresh();
+  });
+  $('#btnGpxStops').addEventListener('click', () => {
+    const found = (liveRun.stops || []).slice(0, 3), picks = ['🍡', '🧋', '🍦'];
+    liveStops.length = 0;
+    found.forEach((p, i) => liveStops.push({ emoji: picks[i], name: `จุดแวะ ${i + 1}`, km: +(p.d / 1000).toFixed(2), kcal: FOOD_KCAL[picks[i]] }));
+    renderStopList(); refresh();
+    setStatus(`ใส่จุดแวะกินจาก GPX ${found.length} จุดแล้ว แก้ชื่อร้านและของกินได้ในตาราง`);
+  });
+  $('#inPlace').addEventListener('input', () => { if (state.mode === 'live') { renderHead(); buildMap(); renderAll(0, false); } else if (state.mode === 'reel') { clearTimeout(window.__placeT); window.__placeT = setTimeout(reset, 400); } });
+
+  /* ---------- Export ---------- */
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  // Plays the whole clip with the viewer's own data. Returns its length in ms.
+  function playSequence() {
+    if (state.mode !== 'live') setMode('live');
+    reset();
+    const s = Math.max(3, Math.round(num('inStretch', 8, 3))), sc = buildSchedule(s, num('inPlay', 15, 5), Math.min(s, 5));
+    sc.steps.forEach(([t, fn]) => later(fn, t * 1000));
+    return sc.end * 1000;
+  }
+  $('#btnAuto').addEventListener('click', () => {
+    const ms = playSequence(), st = $('#recStatus');
+    st.hidden = false; st.className = 'status'; st.textContent = `กำลังเล่นทั้งคลิป ยาวประมาณ ${Math.round(ms / 1000)} วินาที อัดหน้าจอได้เลย`;
+  });
+  async function recordClip() {
+    const st = $('#recStatus'); st.hidden = false; st.className = 'status';
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia || !window.MediaRecorder) {
+      st.className = 'status warn'; st.textContent = 'เบราว์เซอร์นี้อัดเองไม่ได้ ให้เปิดไฟล์ในเครื่องด้วย Chrome บนคอม หรือกด "เล่นอัตโนมัติ" แล้วอัดหน้าจอแทน'; return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true, preferCurrentTab: true, selfBrowserSurface: 'include' });
+    } catch (e) {
+      st.className = 'status warn'; st.textContent = 'อัดในหน้านี้ไม่ได้ (ลิงก์ claude.ai ไม่อนุญาต หรือกดยกเลิก) ให้เปิดไฟล์ run-quest-hud.html ในเครื่องด้วย Chrome แล้วกดใหม่ หรือกด "เล่นอัตโนมัติ" แล้วอัดหน้าจอแทน'; return;
+    }
+    const track = stream.getVideoTracks()[0];
+    document.body.classList.add('rec');
+    await wait(400); buildMap(); renderAll(0, false);
+    let cropped = false;
+    try { if (window.CropTarget && track.cropTo) { await track.cropTo(await CropTarget.fromElement(stage)); cropped = true; } } catch (e) { /* keep full tab */ }
+    const mime = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m)) || '';
+    const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 8e6 } : undefined);
+    const chunks = [];
+    rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+    const stopped = new Promise(r => { rec.onstop = r; });
+    track.addEventListener('ended', () => { if (rec.state !== 'inactive') rec.stop(); });
+    rec.start(500);
+    st.textContent = 'กำลังอัด... อย่าสลับแท็บนะ 🎬';
+    await wait(700);
+    const ms = playSequence();
+    await Promise.race([wait(ms + 600), stopped]);
+    if (rec.state !== 'inactive') rec.stop();
+    await stopped;
+    stream.getTracks().forEach(t => t.stop());
+    document.body.classList.remove('rec');
+    later(() => { buildMap(); }, 80);
+    const type = rec.mimeType || mime || 'video/webm', ext = type.includes('mp4') ? 'mp4' : 'webm';
+    const blob = new Blob(chunks, { type }), url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `run-quest-${new Date().toISOString().slice(0, 10)}.${ext}`;
+    document.body.appendChild(a); a.click(); a.remove();
+    st.className = 'status';
+    st.textContent = `ได้ไฟล์ ${ext.toUpperCase()} แล้ว ${(blob.size / 1e6).toFixed(1)} MB ดูในโฟลเดอร์ดาวน์โหลด${cropped ? '' : ' (เบราว์เซอร์นี้ตัดเฉพาะกรอบไม่ได้ ต้องครอปเป็น 9:16 ในแอปตัดต่อ)'}${ext === 'webm' ? ' ถ้าแอปตัดต่อเปิด WEBM ไม่ได้ ให้แปลงเป็น MP4 ก่อน' : ''}`;
+  }
+  $('#btnRecord').addEventListener('click', recordClip);
+  $('#inGpx').addEventListener('change', e => readFile(e.target.files[0], 'readAsText', txt => {
+    try { const g = parseGpx(txt); useRun(g, `โหลดแล้ว${g.title ? ' "' + g.title + '"' : ''}`); } catch (err) { setStatus(err.message, 'err'); }
+  }));
+  $('#btnManual').addEventListener('click', () => {
+    const km = parseFloat($('#inDist').value), sec = parseClock($('#inTime').value), hr = parseInt($('#inHr').value, 10);
+    if (!(km > 0) || !(sec > 0)) { setStatus('กรอกระยะทางและเวลาให้ครบก่อน เช่น 3.2 กับ 19:40', 'err'); return; }
+    useRun(synth(km, sec, hr > 0 ? hr : 0, 'manual'), 'ใช้ข้อมูลที่กรอก');
+  });
+  function setMapMode(m) {
+    state.mapMode = m;
+    $('#mapAuto').setAttribute('aria-pressed', m === 'auto'); $('#mapImg').setAttribute('aria-pressed', m === 'image');
+    $('#imgTools').hidden = m !== 'image';
+    if (m !== 'image') stopTrace();
+    reset();
+  }
+  $('#mapAuto').addEventListener('click', () => setMapMode('auto'));
+  $('#mapImg').addEventListener('click', () => setMapMode('image'));
+  $('#inMapImg').addEventListener('change', e => readFile(e.target.files[0], 'readAsDataURL', url => {
+    const img = new Image();
+    img.onload = () => { state.mapImg = url; state.mapImgRatio = img.naturalHeight / img.naturalWidth || 1; state.trace = []; reset(); $('#traceHint').textContent = 'ใส่รูปแล้ว กด "วาดทางวิ่ง" แล้วคลิกไล่ไปตามทางวิ่งในรูปทีละจุด'; };
+    img.src = url;
+  }));
+  function stopTrace() { state.tracing = false; mapwrap.classList.remove('tracing'); $('#btnTrace').classList.remove('on'); $('#btnTrace').textContent = '✏️ วาดทางวิ่ง'; }
+  $('#btnTrace').addEventListener('click', () => {
+    if (!state.mapImg) { $('#traceHint').textContent = 'ใส่รูปแผนที่ก่อน แล้วค่อยวาดทางวิ่ง'; return; }
+    if (state.tracing) { stopTrace(); $('#traceHint').textContent = state.trace.length >= 3 ? `วาดเสร็จแล้ว ${state.trace.length} จุด ตัวละครจะวิ่งตามเส้นนี้` : 'ต้องมีอย่างน้อย 3 จุด ตอนนี้ใช้รูปทรงจาก GPX แทน'; }
+    else { if (state.mode !== 'live') setMode('live'); state.tracing = true; mapwrap.classList.add('tracing'); $('#btnTrace').classList.add('on'); $('#btnTrace').textContent = '✓ เสร็จแล้ว'; $('#traceHint').textContent = 'คลิกบนแผนที่ไล่ไปตามทางวิ่งทีละจุด เริ่มจากจุดออกตัว'; }
+    reset();
+  });
+  $('#btnUndo').addEventListener('click', () => { state.trace.pop(); reset(); });
+  $('#btnClear').addEventListener('click', () => { state.trace = []; reset(); });
+  mapSvg.addEventListener('click', e => {
+    if (!state.tracing) return;
+    const pt = mapSvg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+    const m = mapSvg.getScreenCTM(); if (!m) return;
+    const p = pt.matrixTransform(m.inverse());
+    state.trace.push({ x: Math.max(0, Math.min(1, p.x / mapW)), y: Math.max(0, Math.min(1, p.y / mapH)) });
+    buildMap();
+  });
+  $('#inPipVid').addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0], video = $('#pipVid'), st = $('#vidStatus'); if (!f) return; video.__file = f;
+    st.hidden = false; st.className = 'status'; st.textContent = 'กำลังโหลดวิดีโอ...';
+    video.onerror = () => { stage.classList.remove('has-pipvid'); st.className = 'status err'; st.textContent = 'เปิดวิดีโอในหน้านี้ไม่ได้ ใช้กรีนสกรีนแล้วซ้อนในแอปตัดต่อแทน'; };
+    video.onloadeddata = () => { stage.classList.add('has-pipvid'); st.className = 'status'; st.textContent = 'ใส่คลิปแล้ว 🎬 จะเริ่มเล่นใหม่ตอนกด 2'; const r = video.play(); if (r && r.catch) r.catch(() => {}); };
+    try { video.src = URL.createObjectURL(f); } catch (err) { video.onerror(); }
+  });
+
+  /* =====================================================================
+     QUICK REEL GENERATOR
+     One master timeline (REEL_TIMELINES) → a plan → renderFrame(t) on a 1080×1920 canvas.
+     Preview and export both call renderFrame(t), so a 15 s reel is always 15 s.
+     ===================================================================== */
+  const RW = 1080, RH = 1920, FPS = 30;
+  // Area clear of the TikTok / Reels top bar, right-side buttons and bottom caption.
+  const SAFE = { l: 60, r: 930, t: 150, b: 1590 }, SCX = (SAFE.l + SAFE.r) / 2;
+  const reelCanvas = $('#reelCanvas'), rc = reelCanvas.getContext('2d');
+  const FONT = { d: 'Mali, Itim, sans-serif', h: 'Sriracha, Mali, sans-serif', b: 'Itim, Mali, sans-serif', e: '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif' };
+  const RC = { ink: '#5B4570', paper: '#FFFDF8', cream: '#FFF6EC', pink: '#FFB3CF', pink2: '#FF8FB8', lav: '#CDBEFF', mint: '#A8EBD0', butter: '#FFE27A', peach: '#FFC9A3', sky: '#9FD8FF' };
+  const PAL = [RC.pink, RC.butter, RC.mint, RC.lav, RC.peach, RC.sky];
+
+  // Story presets only change data (hook, ending, which moments to show, sound flavour); the engine is shared.
+  const REEL_PRESETS = {
+    daily:   { th: 'วิ่งชิลๆ ประจำวัน', hook: { tag: 'POV:', lines: ['ชีวิตฉันกลายเป็น', 'เกมวิ่ง 🎮'] }, end: ['NEXT QUEST', 'TOMORROW? 💗'], order: ['fastest', 'halfway', 'snack', 'chat', 'friend', 'goal'], sfx: 'cute', hint: 'เล่าวันวิ่งธรรมดาให้เป็นเกม เน้นกิโลที่เร็วที่สุดและครึ่งทาง' },
+    friends: { th: 'วิ่งกับเพื่อน', hook: { tag: 'POV:', lines: ['ชวนเพื่อนมาวิ่ง', 'แต่... 👀'] }, end: ['แท็กเพื่อนที่', 'ต้องมาวิ่งด้วย! 👯'], order: ['friend', 'chat', 'snack', 'closed', 'halfway'], sfx: 'cute', hint: 'เน้นเพื่อน ฉากคุย และคนที่ขอกลับก่อน' },
+    snacks:  { th: 'วิ่งเพื่อกิน', hook: { tag: 'POV:', lines: ['วิ่งเพื่อกิน', 'ล้วนๆ 🍡'] }, end: ['พรุ่งนี้วิ่งไป', 'ร้านไหนดี? 🤤'], order: ['snack', 'closed', 'halfway', 'chat'], sfx: 'funny', hint: 'เน้นจุดแวะกิน และร้านที่ปิดจนอด' },
+    pb:      { th: 'ทำสถิติใหม่', hook: { tag: 'POV:', lines: ['วันนี้จะทำ', 'สถิติใหม่! ⚡'] }, end: ['NEW PB', 'UNLOCKED? 🏆'], order: ['fastest', 'goal', 'halfway'], sfx: 'epic', hint: 'เน้นกิโลที่เร็วที่สุดและการทำเป้าหมายสำเร็จ' },
+    funny:   { th: 'วิ่งวุ่นๆ ฮาๆ', hook: { tag: 'POV:', lines: ['วิ่งวันนี้', 'วุ่นวายมาก 🤣'] }, end: ['ตอนหน้า', 'จะรอดมั้ย? 😂'], order: ['closed', 'friend', 'snack', 'chat', 'halfway'], sfx: 'funny', hint: 'เน้นเรื่องฮาๆ ร้านปิด เพื่อนหนีกลับบ้าน' },
+  };
+  // One-liner joke under the opening title, per story.
+  const HOOK_JOKES = {
+    daily: '(ปกติวิ่งไกลสุดคือไปตู้เย็น 🧊)',
+    friends: '(นัด 6 โมง เพื่อนมา 7 โมงครึ่ง 🙃)',
+    snacks: '(ไม่ได้วิ่งเพื่อสุขภาพ วิ่งไปร้านลูกชิ้น 🍡)',
+    pb: '(สถิติเดิม: ตื่นทันนาฬิกาปลุก 1 ครั้ง ⏰)',
+    funny: '(ไม่มีอะไรเป็นไปตามแผนเลย 🤣)',
+  };
+  // Scene windows in seconds. Every timeline ends exactly at its duration.
+  const REEL_TIMELINES = {
+    15: { scenes: { hook: [0, 2], enter: [2, 5], adv: [5, 9], fin: [9, 13], end: [13, 15] }, events: 1, hold: 1.25, lines: 1 },
+    30: { scenes: { hook: [0, 3], enter: [3, 7.5], adv: [7.5, 20], fin: [20, 26], end: [26, 30] }, events: 2, hold: 2.6, lines: 2 },
+    60: { scenes: { hook: [0, 4], enter: [4, 11], adv: [11, 45], fin: [45, 54], end: [54, 60] }, events: 4, hold: 3.6, lines: 2 },
+  };
+  const SCENE_ORDER = ['hook', 'enter', 'adv', 'fin', 'end'];
+  const SCENE_INFO = {
+    hook: ['HOOK', 'A · คลิปจริงเต็มจอ'], enter: ['ENTER THE GAME', 'B · แผนที่การ์ตูน'], adv: ['THE ADVENTURE', 'C · แบ่งจอ แผนที่ + คลิปจริง'],
+    fin: ['THE FINISH', 'B · แผนที่การ์ตูน'], end: ['ENDING', 'A · คลิปจริงเต็มจอ'],
+  };
+  const RECT = {
+    mapFull: { x: 60, y: 330, w: 870, h: 1000 },
+    // Split screen: map (top) · caption strip 950–1125 for banners and event cards · footage (bottom)
+    mapHyb: { x: 147, y: 150, w: 696, h: 800 },
+    footHyb: { x: 60, y: 1125, w: 870, h: 435 },
+  };
+  const reel = { dur: 15, preset: 'daily', plan: null, mapImg: null, shape: null, W: 100, H: 115, faces: {}, playing: false, t: 0, startAt: 0, lastT: 0, raf: 0, ver: 0, exporting: false, scr: {}, blocks: [] };
+  const vFoot = document.createElement('video'), vSelfie = document.createElement('video');
+  [vFoot, vSelfie].forEach(v => { v.muted = true; v.playsInline = true; v.preload = 'auto'; });
+
+  /* ---------- small math ---------- */
+  const clamp01 = x => Math.max(0, Math.min(1, x));
+  const prog = (t, a, b) => clamp01((t - a) / (b - a));
+  const ease = {
+    out: x => 1 - Math.pow(1 - x, 3),
+    inOut: x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2,
+    back: x => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); },
+    bounce: x => { const n = 7.5625, d = 2.75; if (x < 1 / d) return n * x * x; if (x < 2 / d) return n * (x -= 1.5 / d) * x + .75; if (x < 2.5 / d) return n * (x -= 2.25 / d) * x + .9375; return n * (x -= 2.625 / d) * x + .984375; },
+  };
+
+  /* ---------- plan: moments → events → progress keyframes → sound cues ---------- */
+  function reelMoments(list, mates) {
+    const out = [];
+    stopList().forEach(s => out.push({ kind: s.closed ? 'closed' : 'snack', u: s.u, s }));
+    list.filter(p => p.leaveU != null).forEach(p => out.push({ kind: 'friend', u: p.leaveU, p }));
+    const sp = splitsBy(run, 1000).filter(x => x.full);
+    if (sp.length >= 2) { const f = sp.reduce((a, b) => b.sec < a.sec ? b : a); out.push({ kind: 'fastest', u: uForD((f.n - .5) * 1000), sp: f }); }
+    if (mates.length) out.push({ kind: 'chat', u: .4 });
+    out.push({ kind: 'halfway', u: .5 });
+    const g = goalKm() * 1000; if (g < run.dist - 50) out.push({ kind: 'goal', u: uForD(g) });
+    return out;
+  }
+  function momentCard(m, me, mates) {
+    const F = mates.filter(p => !(m.p && p.id === m.p.id))[0] || me;
+    switch (m.kind) {
+      case 'snack': return { icon: m.s.emoji, title: `แวะ${m.s.name}!`, sub: `+${m.s.kcal} kcal 😋`, talk: [[F, 'แวะแป๊บเดียวนะ 🤭'], [me, 'อันนี้ไม่นับแคล 🤫']], sfx: 'coin', mood: 'happy', meMood: 'happy' };
+      case 'closed': return { icon: '🔒', title: `ร้าน${m.s.name}ปิด!`, sub: 'อดกิน 😭', talk: [[me, 'ไม่นะะะ 😭'], [F, 'วันนี้ป้าไม่มา 🥺']], sfx: 'surprise', mood: 'sad', meMood: 'sad' };
+      case 'friend': { const t = LEAVE_TALK[m.p.reason] || LEAVE_TALK.pain; return { icon: '👋', title: `${m.p.name} ขอกลับก่อน`, sub: REASON_LABEL[m.p.reason] || '', talk: [[m.p, t[0]], [me, t[1]]], sfx: 'surprise', mood: 'surprised', meMood: 'surprised' }; }
+      case 'chat': return { icon: '💞', title: 'วิ่งด้วยกัน!', sub: `${mates.length + 1} คน`, talk: [[F, 'ไปด้วยกันนะ 💞'], [me, 'ใครช้าเลี้ยงข้าว! 😆']], sfx: 'coin', mood: 'happy', meMood: 'happy' };
+      case 'fastest': return { icon: '⚡', title: `กม.${m.sp.n} เร็วที่สุด!`, sub: `${fmtPace(m.sp.sec)}/กม.`, talk: [[me, 'ขาไฟลุก! 🔥'], [F, 'รอด้วยยย 😵']], sfx: 'achieve', mood: 'celebrate', meMood: 'celebrate' };
+      case 'goal': return { icon: '🎯', title: `ครบเป้า ${goalKm().toFixed(1)} กม.!`, sub: 'เควสต์หลักสำเร็จ', talk: [[me, 'ทำได้แล้ว! 🎉'], [F, 'เก่งมากกก 👏']], sfx: 'achieve', mood: 'celebrate', meMood: 'celebrate' };
+      default: return { icon: '🚩', title: 'ครึ่งทางแล้ว!', sub: `${(run.dist / 2000).toFixed(2)} กม.`, talk: [[F, 'อีกครึ่ง สู้ๆ! 💪'], [me, 'หายใจลึกๆ~']], sfx: 'achieve', mood: 'happy', meMood: 'happy' };
+    }
+  }
+  function buildReelPlan() {
+    const TL = REEL_TIMELINES[reel.dur], P = REEL_PRESETS[reel.preset], S = TL.scenes, D = reel.dur;
+    const list = crew(), me = list[0], mates = list.filter(p => !p.me);
+    const moments = reelMoments(list, mates), picked = [];
+    P.order.forEach(k => moments.filter(m => m.kind === k).forEach(m => { if (picked.length < TL.events && !picked.includes(m)) picked.push(m); }));
+    moments.forEach(m => { if (picked.length < TL.events && !picked.includes(m)) picked.push(m); });
+    picked.sort((a, b) => a.u - b.u);
+    const [a0, a1] = S.adv, unlockAt = a0 + .35, slotStart = a0 + 1.5, slot = (a1 - slotStart - .3) / Math.max(1, picked.length);
+    let prevU = .26;
+    picked.forEach((m, i) => {
+      m.hold = Math.min(TL.hold, slot - .25);
+      m.t = slotStart + i * slot + Math.max(0, (slot - m.hold) * .4);
+      // Where the runners stand during the event: the real spot when it fits the story order, nudged otherwise.
+      m.showU = Math.max(prevU + .04, Math.min(.78 - (picked.length - 1 - i) * .04, m.u)); prevU = m.showU;
+      m.card = momentCard(m, me, mates);
+      if (m.kind === 'friend') m.p.goneAt = m.t + m.hold;
+    });
+    const finishAt = S.fin[0] + (S.fin[1] - S.fin[0]) * .4;
+    const kf = [{ t: 0, u: 0, stop: 1 }, { t: S.enter[0] + .7, u: 0, stop: 1 }, { t: S.enter[1], u: .26 }];
+    picked.forEach(m => kf.push({ t: m.t, u: m.showU, stop: 1 }, { t: m.t + m.hold, u: m.showU, stop: 1 }));
+    kf.push({ t: a1, u: .8 }, { t: finishAt, u: 1, stop: 1 }, { t: D, u: 1, stop: 1 });
+    const plan = { dur: D, P, TL, S, crew: list, events: picked, kf, finishAt, unlockAt, coverT: finishAt + 1.4 };
+    const cues = [[.04, 'start'], [S.enter[0] + .05, 'whoosh'], [S.enter[0] + .62, 'jump'], [S.enter[0] + .75, 'quest'], [unlockAt, 'unlock']];
+    picked.forEach(m => { cues.push([m.t, m.card.sfx]); if (m.kind === 'friend') cues.push([m.t + m.hold - .25, 'bye']); });
+    cues.push([finishAt - 1, 'whoosh'], [finishAt, 'celebrate'], [finishAt + .75, 'achieve'], [S.end[0] + .3, 'cute']);
+    reel.plan = plan;
+    for (let t = S.enter[0] + .8; t < finishAt; t += .3) if (isMoving(t)) cues.push([t, 'step']);
+    plan.cues = cues.sort((a, b) => a[0] - b[0]);
+    return plan;
+  }
+  function progressAt(t) {
+    const kf = reel.plan.kf;
+    if (t <= kf[0].t) return kf[0].u;
+    for (let i = 1; i < kf.length; i++) {
+      const a = kf[i - 1], b = kf[i];
+      if (t <= b.t) {
+        const k = b.t > a.t ? (t - a.t) / (b.t - a.t) : 1;
+        const e = a.stop && b.stop ? k * k * (3 - 2 * k) : a.stop ? k * k : b.stop ? 1 - (1 - k) * (1 - k) : k;
+        return a.u + (b.u - a.u) * e;
+      }
+    }
+    return kf[kf.length - 1].u;
+  }
+  function isMoving(t) { return t < reel.plan.finishAt && Math.abs(progressAt(t + .04) - progressAt(t - .04)) > 1e-4; }
+  function sceneAt(t) {
+    const S = reel.plan.S;
+    let idx = SCENE_ORDER.findIndex(id => t < S[id][1]); if (idx < 0) idx = SCENE_ORDER.length - 1;
+    const id = SCENE_ORDER[idx];
+    return { id, idx, a: S[id][0], b: S[id][1] };
+  }
+
+  /* ---------- route + crew state ---------- */
+  function reelPos(f) {
+    const pts = reel.shape; f = clamp01(f);
+    let lo = 0, hi = pts.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (pts[mid].f <= f) lo = mid; else hi = mid; }
+    const k = (f - pts[lo].f) / ((pts[hi].f - pts[lo].f) || 1);
+    return { x: pts[lo].x + k * (pts[hi].x - pts[lo].x), y: pts[lo].y + k * (pts[hi].y - pts[lo].y) };
+  }
+  function lapF(p, d) {
+    const n = laps(), L = p.dist / n, done = d >= p.dist - .5, li = done ? n - 1 : Math.min(n - 1, Math.floor(d / L));
+    return { f: done ? 1 : (d - li * L) / L, lap: done ? n : li + 1 };
+  }
+  function crewState(t) {
+    const u = progressAt(t), list = reel.plan.crew.map((p, i) => {
+      const d = u >= 1 && p.leaveU == null ? p.dist : p.dAt(u), lf = lapF(p, d);
+      const f = Math.max(0, lf.f - i * .022), pos = reelPos(f), back = reelPos(Math.max(0, f - .012));
+      let alpha = 1;
+      if (p.goneAt != null) alpha = 1 - prog(t, p.goneAt, p.goneAt + .5);
+      else if (p.leaveU != null) alpha = 1 - clamp01((u - p.leaveU) / .03);
+      return { p, i, d, lap: lf.lap, pos, facing: pos.x >= back.x ? 1 : -1, alpha };
+    });
+    return { u, list, me: list[0] };
+  }
+  function moodAt(t, c) {
+    const plan = reel.plan, ev = plan.events.find(m => t >= m.t - .1 && t <= m.t + m.hold);
+    if (ev) {
+      if (ev.kind === 'friend' && c.p === ev.p) return t > ev.t + ev.hold - .6 ? 'wave' : 'surprised';
+      if (ev.card.talk.some(([sp]) => sp === c.p)) return c.p.me ? ev.card.meMood : ev.card.mood;
+    }
+    if (t >= plan.finishAt) return 'celebrate';
+    if (t >= plan.finishAt - 1) return 'tired';
+    return null;
+  }
+
+  /* ---------- drawing primitives ---------- */
+  function rr(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2); rc.beginPath();
+    rc.moveTo(x + r, y); rc.arcTo(x + w, y, x + w, y + h, r); rc.arcTo(x + w, y + h, x, y + h, r);
+    rc.arcTo(x, y + h, x, y, r); rc.arcTo(x, y, x + w, y, r); rc.closePath();
+  }
+  function rCard(x, y, w, h, r = 40, fill = RC.paper, lw = 7) {
+    rr(x + 10, y + 12, w, h, r); rc.fillStyle = 'rgba(91,69,112,.22)'; rc.fill();
+    rr(x, y, w, h, r); rc.fillStyle = fill; rc.fill(); rc.lineWidth = lw; rc.strokeStyle = RC.ink; rc.stroke();
+  }
+  const EMO = /(\p{Extended_Pictographic}(?:️)?(?:‍\p{Extended_Pictographic}(?:️)?)*)/u;
+  const textRuns = text => String(text).split(EMO).filter(Boolean).map(s => ({ s, e: /\p{Extended_Pictographic}/u.test(s) }));
+  function runFont(r, size, w, fam) { rc.font = r.e ? `${Math.round(size * .9)}px ${FONT.e}` : `${w} ${Math.round(size)}px ${fam}`; }
+  function textWidth(text, size, w = 700, fam = FONT.d) { let tw = 0; textRuns(text).forEach(r => { runFont(r, size, w, fam); tw += rc.measureText(r.s).width; }); return tw; }
+  // Draws Thai/Latin text with a sticker outline; emoji are drawn in colour without the outline.
+  function drawText(text, x, y, o = {}) {
+    let size = o.size || 60; const w = o.w || 700, fam = o.fam || FONT.d, maxW = o.maxW || 860;
+    let tw = textWidth(text, size, w, fam);
+    if (tw > maxW) { size *= maxW / tw; tw = maxW; }
+    let cx = o.align === 'left' ? x : o.align === 'right' ? x - tw : x - tw / 2;
+    rc.textAlign = 'left'; rc.textBaseline = 'middle'; rc.lineJoin = 'round';
+    textRuns(text).forEach(r => {
+      runFont(r, size, w, fam);
+      if (r.e) { rc.fillText(r.s, cx, y + size * .04); cx += rc.measureText(r.s).width; return; }
+      if (o.stroke) {
+        if (o.shadow) { rc.save(); rc.strokeStyle = 'rgba(91,69,112,.3)'; rc.lineWidth = o.lw || size * .18; rc.strokeText(r.s, cx + size * .05, y + size * .07); rc.restore(); }
+        rc.strokeStyle = o.stroke; rc.lineWidth = o.lw || size * .18; rc.strokeText(r.s, cx, y);
+      }
+      rc.fillStyle = o.fill || RC.ink; rc.fillText(r.s, cx, y);
+      cx += rc.measureText(r.s).width;
+    });
+    return { w: tw, size };
+  }
+  function shape2(kind, x, y, s, col, rot) {
+    rc.save(); rc.translate(x, y); rc.rotate(rot); rc.fillStyle = col; rc.strokeStyle = RC.ink; rc.lineWidth = Math.max(2, s * .08); rc.lineJoin = 'round';
+    rc.beginPath();
+    if (kind === 'spark') { const a = s / 2, b = s * .1; rc.moveTo(0, -a); rc.quadraticCurveTo(b, -b, a, 0); rc.quadraticCurveTo(b, b, 0, a); rc.quadraticCurveTo(-b, b, -a, 0); rc.quadraticCurveTo(-b, -b, 0, -a); }
+    else if (kind === 'heart') { rc.moveTo(0, s * .35); rc.bezierCurveTo(-s * .65, -s * .05, -s * .3, -s * .58, 0, -s * .2); rc.bezierCurveTo(s * .3, -s * .58, s * .65, -s * .05, 0, s * .35); }
+    else if (kind === 'star') { for (let i = 0; i < 10; i++) { const r = i % 2 ? s * .22 : s * .5, a = i * Math.PI / 5 - Math.PI / 2; rc.lineTo(Math.cos(a) * r, Math.sin(a) * r); } rc.closePath(); }
+    else if (kind === 'conf') { rc.rect(-s * .3, -s * .14, s * .6, s * .28); }
+    else rc.arc(0, 0, s * .28, 0, Math.PI * 2);
+    rc.fill(); rc.stroke(); rc.restore();
+  }
+  // Deterministic particle burst: the same t always draws the same frame (needed for export).
+  function rBurst(t, t0, x, y, seed, o = {}) {
+    const life = o.life || 1.3, k = (t - t0) / life; if (k < 0 || k > 1) return;
+    const r = mulberry(seed), n = o.n || 18, kinds = o.kinds || ['spark', 'heart', 'dot', 'star'];
+    for (let i = 0; i < n; i++) {
+      const a = r() * Math.PI * 2, sp = (o.spread || 300) * (.35 + .65 * r()), sz = (o.size || 38) * (.6 + .6 * r());
+      const kind = kinds[Math.floor(r() * kinds.length)], col = PAL[Math.floor(r() * PAL.length)], spin = (r() - .5) * 8, e = ease.out(k);
+      rc.globalAlpha = 1 - k * k;
+      shape2(kind, x + Math.cos(a) * sp * e, y + Math.sin(a) * sp * e + (o.gravity || 0) * k * k, sz * (1 - .3 * k), col, spin * k);
+    }
+    rc.globalAlpha = 1;
+  }
+  function twinkles(t, x, y, w, h, seed, n = 7) {
+    const r = mulberry(seed);
+    for (let i = 0; i < n; i++) {
+      const px = x + r() * w, py = y + r() * h, ph = r() * 6, s = 22 + r() * 22, k = (Math.sin(t * 4 + ph) + 1) / 2;
+      rc.globalAlpha = .35 + .65 * k; shape2(i % 2 ? 'spark' : 'star', px, py, s * (.6 + .5 * k), i % 3 ? '#fff' : RC.butter, t * .8 + ph);
+    }
+    rc.globalAlpha = 1;
+  }
+  function speedLines(t, k, x, y, w, h) {
+    if (k <= 0) return;
+    const r = mulberry(77); rc.save(); rc.strokeStyle = RC.ink; rc.lineCap = 'round';
+    for (let i = 0; i < 16; i++) {
+      const side = i % 2, ly = y + 40 + r() * (h - 80), len = 50 + r() * 110, sp = 900 + r() * 900, band = w * .2;
+      const off = ((t * sp + r() * 1000) % band);
+      const lx = side ? x + w - off : x + off;
+      rc.globalAlpha = .45 * k * (1 - off / band); rc.lineWidth = 5 + r() * 4;
+      rc.beginPath(); rc.moveTo(lx, ly); rc.lineTo(lx + (side ? len : -len), ly); rc.stroke();
+    }
+    rc.restore(); rc.globalAlpha = 1;
+  }
+  let dotPat = null;
+  function bgDots(t) {
+    rc.fillStyle = RC.cream; rc.fillRect(0, 0, RW, RH);
+    if (!dotPat) { const c = document.createElement('canvas'); c.width = c.height = 54; const g = c.getContext('2d'); g.fillStyle = 'rgba(205,190,255,.5)'; g.beginPath(); g.arc(27, 27, 5, 0, Math.PI * 2); g.fill(); dotPat = rc.createPattern(c, 'repeat'); }
+    rc.save(); rc.translate((t * 14) % 54, (t * 14) % 54); rc.fillStyle = dotPat; rc.fillRect(-54, -54, RW + 108, RH + 108); rc.restore();
+  }
+  function shade() {
+    let g = rc.createLinearGradient(0, 0, 0, 520); g.addColorStop(0, 'rgba(46,30,66,.45)'); g.addColorStop(1, 'rgba(46,30,66,0)');
+    rc.fillStyle = g; rc.fillRect(0, 0, RW, 520);
+    g = rc.createLinearGradient(0, RH - 720, 0, RH); g.addColorStop(0, 'rgba(46,30,66,0)'); g.addColorStop(1, 'rgba(46,30,66,.5)');
+    rc.fillStyle = g; rc.fillRect(0, RH - 720, RW, 720);
+  }
+  function rBanner(text, x, y, size, fill, kIn, kOut = 0, sub) {
+    if (kIn <= 0 || kOut >= 1) return;
+    rc.save(); rc.globalAlpha = 1 - kOut; rc.translate(x, y); rc.rotate(-.05);
+    const s = ease.back(kIn) * (1 + .12 * kOut); rc.scale(s, s);
+    drawText(text, 0, 0, { size, fill, stroke: RC.ink, lw: size * .2, shadow: true, maxW: 840 });
+    if (sub) {
+      const sw2 = textWidth(sub, size * .3, 400, FONT.h) + 50;
+      rr(-sw2 / 2, size * .55, sw2, size * .46, size * .23); rc.fillStyle = '#fff'; rc.fill(); rc.lineWidth = 5; rc.strokeStyle = RC.ink; rc.stroke();
+      drawText(sub, 0, size * .78, { size: size * .3, w: 400, fam: FONT.h, maxW: 780 });
+    }
+    rc.restore(); rc.globalAlpha = 1;
+  }
+  const hits = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  // Speech bubble above the speaker; moves below the feet if that spot is taken by a banner, card or the distance box.
+  function rBubble(x, y, text, color, k, footY) {
+    if (k <= 0) return;
+    const size = 40, tw = textWidth(text, size, 400, FONT.h), w = Math.min(820, tw + 60), h = 78;
+    const bx = Math.max(SAFE.l, Math.min(SAFE.r - w, x - w / 2));
+    const cands = [{ by: y - h - 30, below: false }];
+    if (footY != null) cands.push({ by: footY + 34, below: true });
+    const ok = c => c.by >= SAFE.t && c.by + h <= SAFE.b && !reel.blocks.some(b => hits(b, { x: bx, y: c.by, w, h }));
+    const pick = cands.find(ok) || (cands[0].by >= SAFE.t ? cands[0] : cands[cands.length - 1]);
+    const by = pick.by, below = pick.below;
+    reel.blocks.push({ x: bx, y: by, w, h });
+    const tx = Math.max(bx + 34, Math.min(bx + w - 34, x));
+    rc.save(); const s = ease.back(Math.min(1, k)); rc.translate(x, y); rc.scale(s, s); rc.translate(-x, -y);
+    rr(bx + 6, by + 8, w, h, 39); rc.fillStyle = 'rgba(91,69,112,.2)'; rc.fill();
+    rr(bx, by, w, h, 39); rc.fillStyle = '#fff'; rc.fill(); rc.lineWidth = 6; rc.strokeStyle = color; rc.stroke();
+    rc.beginPath();
+    if (below) { rc.moveTo(tx - 18, by + 3); rc.lineTo(tx, by - 22); rc.lineTo(tx + 18, by + 3); }
+    else { rc.moveTo(tx - 18, by + h - 3); rc.lineTo(tx, by + h + 24); rc.lineTo(tx + 18, by + h - 3); }
+    rc.fillStyle = '#fff'; rc.fill(); rc.stroke();
+    drawText(text, bx + w / 2, by + h / 2 + 2, { size, w: 400, fam: FONT.h, maxW: w - 40 });
+    rc.restore();
+  }
+
+  /* ---------- runner character (canvas version of the map runners) ---------- */
+  const MOOD_BADGE = { happy: '😋', tired: '💦', surprised: '❗', celebrate: '🎉', sad: '😭', wave: '👋' };
+  function drawRunner(x, y, size, p, t, o = {}) {
+    const s = size / 150, alpha = o.alpha ?? 1; if (alpha <= 0) return;
+    const running = o.running, mood = o.mood, cele = mood === 'celebrate', f = o.facing || 1;
+    const ph = t * 11 + (p.me ? 0 : 1.7 * (p.id.charCodeAt(1) || 1));
+    const hop = running ? Math.abs(Math.sin(ph)) * 8 * s : cele ? Math.abs(Math.sin(t * 7)) * 24 * s : Math.sin(t * 3) * 2 * s;
+    const drop = o.drop ?? 1, dropY = drop < 1 ? -(1 - ease.bounce(drop)) * 760 : 0;
+    rc.save(); rc.globalAlpha = alpha; rc.translate(x, y);
+    rc.fillStyle = 'rgba(40,60,40,.22)'; rc.beginPath(); rc.ellipse(0, 3 * s, 30 * s * (drop < 1 ? .5 + .5 * drop : 1), 8 * s, 0, 0, Math.PI * 2); rc.fill();
+    rc.translate(0, -hop + dropY); rc.rotate(running ? .08 * f : 0);
+    rc.lineCap = 'round'; rc.lineJoin = 'round'; rc.strokeStyle = RC.ink;
+    [-1, 1].forEach((side, i) => {
+      const a = running ? Math.sin(ph + i * Math.PI) * .6 : cele ? side * .25 : 0;
+      rc.save(); rc.translate(side * 9 * s, -36 * s); rc.rotate(a);
+      rc.lineWidth = 10 * s; rc.beginPath(); rc.moveTo(0, 0); rc.lineTo(0, 32 * s); rc.stroke();
+      rc.fillStyle = '#fff'; rc.beginPath(); rc.ellipse(4 * s * f, 35 * s, 9 * s, 5.5 * s, 0, 0, Math.PI * 2); rc.fill(); rc.lineWidth = 3 * s; rc.stroke(); rc.restore();
+    });
+    [-1, 1].forEach((side, i) => {
+      const a = cele || mood === 'wave' && side === 1 ? side * -2.5 + Math.sin(t * 12) * .25 : running ? Math.sin(ph + (i ? 0 : Math.PI)) * .7 + side * .25 : side * .25;
+      rc.save(); rc.translate(side * 20 * s, -70 * s); rc.rotate(a); rc.lineWidth = 9 * s; rc.beginPath(); rc.moveTo(0, 0); rc.lineTo(0, 26 * s); rc.stroke(); rc.restore();
+    });
+    rr(-23 * s, -80 * s, 46 * s, 46 * s, 18 * s); rc.fillStyle = p.color; rc.fill(); rc.lineWidth = 5 * s; rc.stroke();
+    rr(-12 * s, -69 * s, 24 * s, 18 * s, 5 * s); rc.fillStyle = '#fff'; rc.fill(); rc.lineWidth = 2.5 * s; rc.stroke();
+    rc.fillStyle = RC.ink; rc.font = `700 ${Math.round(12 * s)}px ${FONT.d}`; rc.textAlign = 'center'; rc.textBaseline = 'middle';
+    rc.fillText(p.me ? '1' : String((p.id.charCodeAt(1) || 49) - 46), 0, -59 * s);
+    const hy = -116 * s, hr = 34 * s;
+    rc.beginPath(); rc.arc(0, hy, hr + 6 * s, 0, Math.PI * 2); rc.fillStyle = RC.ink; rc.fill();
+    rc.beginPath(); rc.arc(0, hy, hr + 3 * s, 0, Math.PI * 2); rc.fillStyle = p.color; rc.fill();
+    rc.beginPath(); rc.arc(0, hy, hr - 2 * s, 0, Math.PI * 2); rc.fillStyle = '#fff'; rc.fill();
+    const img = reel.faces[p.id];
+    if (img) {
+      rc.save(); rc.beginPath(); rc.arc(0, hy, hr - 3 * s, 0, Math.PI * 2); rc.clip();
+      const k = Math.max(2 * hr / img.width, 2 * hr / img.height); rc.drawImage(img, -img.width * k / 2, hy - img.height * k / 2, img.width * k, img.height * k); rc.restore();
+    } else { rc.font = `${Math.round(48 * s)}px ${FONT.e}`; rc.textAlign = 'center'; rc.textBaseline = 'middle'; rc.fillText(p.emoji, 0, hy + 3 * s); }
+    rc.restore();
+    rc.save(); rc.globalAlpha = alpha; rc.translate(x, y - hop + dropY);
+    const badge = MOOD_BADGE[mood];
+    if (badge) { const k = .9 + Math.sin(t * 8) * .1; rc.font = `${Math.round(38 * s * k)}px ${FONT.e}`; rc.textAlign = 'center'; rc.textBaseline = 'middle'; rc.fillText(badge, 42 * s, -150 * s); }
+    if (!o.noTag) {
+      // Odd-numbered runners get their tag one row higher so neighbouring tags never stack.
+      const fy = -172 * s - (o.tagRow ? 40 * s : 0) + Math.sin(t * 2.4 + (p.me ? 0 : 1)) * 3 * s;
+      rc.font = `700 ${Math.round(21 * s)}px ${FONT.d}`; const tw = rc.measureText(p.name).width + 26 * s;
+      rr(-tw / 2, fy - 16 * s, tw, 32 * s, 16 * s); rc.fillStyle = '#fff'; rc.fill(); rc.lineWidth = 3.5 * s; rc.strokeStyle = p.color; rc.stroke();
+      rc.fillStyle = RC.ink; rc.textAlign = 'center'; rc.textBaseline = 'middle'; rc.fillText(p.name, 0, fy + 1 * s);
+    }
+    rc.restore();
+  }
+
+  /* ---------- layout pieces ---------- */
+  function drawMapCard(rect, t, zoom, cs, o = {}) {
+    const pad = 12, ix = rect.x + pad, iy = rect.y + pad, iw = rect.w - 2 * pad, ih = rect.h - 2 * pad;
+    rCard(rect.x, rect.y, rect.w, rect.h, 46, RC.paper);
+    const W = reel.W, H = reel.H, vw = W / zoom, vh = H / zoom, fp = cs.me.pos;
+    const vx = Math.max(0, Math.min(W - vw, fp.x - vw / 2)), vy = Math.max(0, Math.min(H - vh, fp.y - vh * .55));
+    const ux = iw / vw, uy = ih / vh, toC = pt => ({ x: ix + (pt.x - vx) * ux, y: iy + (pt.y - vy) * uy });
+    rc.save(); rr(ix, iy, iw, ih, 34); rc.clip();
+    const img = reel.mapImg, k = img.width / W;
+    rc.drawImage(img, vx * k, vy * k, vw * k, vh * k, ix, iy, iw, ih);
+    // My progress on the current lap
+    const meF = lapF(cs.me.p, cs.me.d).f;
+    rc.beginPath(); let started = false;
+    for (const p of reel.shape) { if (p.f > meF) break; const q = toC(p); if (started) rc.lineTo(q.x, q.y); else { rc.moveTo(q.x, q.y); started = true; } }
+    if (started) { const e = toC(reelPos(meF)); rc.lineTo(e.x, e.y); rc.strokeStyle = RC.pink2; rc.lineWidth = 2.6 * ux; rc.lineCap = 'round'; rc.lineJoin = 'round'; rc.globalAlpha = .9; rc.stroke(); rc.globalAlpha = 1; }
+    const size = Math.max(105, Math.min(190, ux * 15));
+    reel.scr = {};
+    cs.list.slice().sort((a, b) => a.pos.y - b.pos.y || (a.p.me ? 1 : -1)).forEach(c => {
+      if (c.alpha <= 0) return;
+      const q = toC(c.pos); reel.scr[c.p.id] = { x: q.x, y: q.y, size };
+      drawRunner(q.x, q.y, size, c.p, t, { running: o.running && !(c.p.leaveU != null && cs.u > c.p.leaveU), mood: moodAt(t, c), alpha: c.alpha, drop: o.drop ? o.drop(c) : 1, facing: c.facing, noTag: !o.tags, tagRow: c.i % 2 });
+    });
+    speedLines(t, o.speed || 0, ix, iy, iw, ih);
+    rc.restore();
+    rr(ix, iy, iw, ih, 34); rc.lineWidth = 5; rc.strokeStyle = RC.ink; rc.stroke();
+    return { toC, size };
+  }
+  function footVideo() {
+    if (vFoot.src) return vFoot;
+    const pv = $('#pipVid'); return pv.src && stage.classList.contains('has-pipvid') ? pv : null;
+  }
+  function drawVideoIn(v, x, y, w, h, zoom = 1) {
+    if (!v || v.readyState < 2 || !v.videoWidth) return false;
+    const fit = $('#inFit').value, vw = v.videoWidth, vh = v.videoHeight;
+    const sc = (fit === 'contain' ? Math.min(w / vw, h / vh) : Math.max(w / vw, h / vh)) * zoom, dw = vw * sc, dh = vh * sc;
+    if (fit === 'contain') { rc.fillStyle = '#3A2D52'; rc.fillRect(x, y, w, h); }
+    rc.drawImage(v, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+    return true;
+  }
+  // Cartoon stand-in used when no real footage was uploaded.
+  function cartoonScene(t, kind, zoom = 1) {
+    const g = rc.createLinearGradient(0, 0, 0, RH); g.addColorStop(0, '#BFE6FF'); g.addColorStop(.55, '#FFE9F1'); g.addColorStop(1, '#FFF4DE');
+    rc.fillStyle = g; rc.fillRect(0, 0, RW, RH);
+    rc.save(); rc.translate(RW / 2, RH * .62); rc.scale(zoom, zoom); rc.translate(-RW / 2, -RH * .62);
+    rc.beginPath(); rc.arc(820, 330, 90, 0, Math.PI * 2); rc.fillStyle = RC.butter; rc.fill(); rc.lineWidth = 7; rc.strokeStyle = RC.ink; rc.stroke();
+    [[180, 380, 1], [600, 250, .8]].forEach(([cx, cy, s], i) => {
+      const x = (cx + t * 30 * (i + 1)) % (RW + 300) - 150; rc.save(); rc.translate(x, cy); rc.scale(s, s);
+      rc.beginPath(); rc.ellipse(0, 0, 110, 46, 0, 0, Math.PI * 2); rc.ellipse(-60, 10, 60, 36, 0, 0, Math.PI * 2); rc.ellipse(60, 10, 60, 36, 0, 0, Math.PI * 2);
+      rc.fillStyle = '#fff'; rc.fill(); rc.restore();
+    });
+    rc.beginPath(); rc.ellipse(250, 1750, 700, 420, 0, 0, Math.PI * 2); rc.fillStyle = '#A9E2A0'; rc.fill(); rc.lineWidth = 7; rc.stroke();
+    rc.beginPath(); rc.ellipse(900, 1800, 650, 380, 0, 0, Math.PI * 2); rc.fillStyle = '#8FD39A'; rc.fill(); rc.stroke();
+    rc.beginPath(); rc.moveTo(-50, 1640); rc.quadraticCurveTo(540, 1480, 1130, 1640); rc.lineWidth = 90; rc.strokeStyle = '#F6DFAE'; rc.stroke();
+    const cr = reel.plan.crew;
+    // Ending: the crew stands between the headline and the result card.
+    if (kind === 'end') cr.forEach((p, i) => drawRunner(RW / 2 + (i - (cr.length - 1) / 2) * 220, 1150, cr.length > 2 ? 250 : 290, p, t, { mood: 'celebrate', noTag: true }));
+    else drawRunner(RW / 2, 1640, 470, cr[0], t, { running: true, noTag: true });
+    rc.restore();
+  }
+  function rDistHud(t, cs, k, mode) {
+    if (k <= 0) return;
+    const u = cs.u, sec = u * run.total, d = u >= 1 ? run.dist : sampleAt(run, sec).d;
+    const pace = u >= 1 ? run.total / (run.dist / 1000) : paceAt(run, sec), hr = run.hr && u > 0 ? sampleAt(run, sec).hr : null;
+    rc.save(); const s = ease.back(Math.min(1, k));
+    if (mode === 'full') {
+      const x = SAFE.l, y = 160, w = SAFE.r - SAFE.l, h = 148;
+      rc.translate(x + w / 2, y + h / 2); rc.scale(s, s); rc.translate(-(x + w / 2), -(y + h / 2));
+      rCard(x, y, w, h, 42, RC.paper);
+      const dw = drawText((d / 1000).toFixed(2), x + 36, y + h / 2 + 4, { size: 98, align: 'left', maxW: 400 }).w;
+      drawText('กม.', x + 46 + dw, y + h / 2 + 18, { size: 40, align: 'left', w: 700 });
+      const n = laps();
+      if (n > 1) { const lap = cs.me.lap; rr(x + w - 210, y + 18, 186, 52, 26); rc.fillStyle = RC.butter; rc.fill(); rc.lineWidth = 5; rc.strokeStyle = RC.ink; rc.stroke(); drawText(`รอบ ${lap}/${n}`, x + w - 117, y + 45, { size: 32 }); }
+      drawText(`⏱️ ${fmtTime(sec)}   ⚡ ${fmtPace(pace)}   ❤️ ${hr || '—'}`, x + w - 26, y + h - 38, { size: 32, w: 400, fam: FONT.b, align: 'right', maxW: 470 });
+    } else {
+      const x = RECT.mapHyb.x + 26, y = RECT.mapHyb.y + 26, w = 330, h = 112;
+      reel.blocks.push({ x, y, w, h });
+      rc.translate(x, y); rc.scale(s, s); rc.translate(-x, -y);
+      rCard(x, y, w, h, 34, RC.paper, 6);
+      const dw = drawText((d / 1000).toFixed(2), x + 26, y + 50, { size: 66, align: 'left', maxW: 210 }).w;
+      drawText('กม.', x + 32 + dw, y + 62, { size: 30, align: 'left' });
+      drawText(`⏱️ ${fmtTime(sec)} · ⚡ ${fmtPace(pace)}`, x + 26, y + 92, { size: 24, w: 400, fam: FONT.b, align: 'left', maxW: 290 });
+    }
+    rc.restore();
+  }
+  function drawFootCard(t, lt) {
+    const R = RECT.footHyb, slide = (1 - ease.out(prog(lt, 0, .45))) * 520;
+    rc.save(); rc.translate(0, slide);
+    rCard(R.x, R.y, R.w, R.h, 44, RC.paper);
+    const ix = R.x + 14, iy = R.y + 14, iw = R.w - 28, ih = R.h - 28;
+    rc.save(); rr(ix, iy, iw, ih, 32); rc.clip();
+    if (!drawVideoIn(footVideo(), ix, iy, iw, ih, 1.04)) {
+      const g = rc.createLinearGradient(0, iy, 0, iy + ih); g.addColorStop(0, '#FFD6B8'); g.addColorStop(.45, '#FFE9D6'); g.addColorStop(.45, '#9EDB8C'); g.addColorStop(1, '#7CC46B');
+      rc.fillStyle = g; rc.fillRect(ix, iy, iw, ih);
+      const rx = ix + iw - ((t * 420) % (iw + 300)) + 150;
+      drawRunner(rx, iy + ih - 50, 240, reel.plan.crew[0], t, { running: true, noTag: true, facing: -1 });
+    }
+    rc.restore();
+    rr(ix, iy, iw, ih, 32); rc.lineWidth = 5; rc.strokeStyle = RC.ink; rc.stroke();
+    rr(R.x + 30, R.y + 30, 250, 58, 29); rc.fillStyle = '#fff'; rc.fill(); rc.lineWidth = 5; rc.stroke();
+    rc.beginPath(); rc.arc(R.x + 62, R.y + 59, 11, 0, Math.PI * 2); rc.fillStyle = Math.sin(t * 8) > 0 ? '#FF6F7F' : '#FFC2C8'; rc.fill(); rc.lineWidth = 4; rc.stroke();
+    drawText('ของจริง!', R.x + 165, R.y + 60, { size: 34, w: 400, fam: FONT.h, maxW: 160 });
+    rc.restore();
+  }
+  function rEventCard(m, k, kOut, x, y) {
+    if (k <= 0 || kOut >= 1) return;
+    const c = m.card, w = 660, h = 140;
+    reel.blocks.push({ x: x - w / 2, y: y - h / 2, w, h });
+    rc.save(); rc.globalAlpha = 1 - kOut; rc.translate(x, y); const s = ease.back(Math.min(1, k)); rc.scale(s, s); rc.rotate(-.02);
+    rCard(-w / 2, -h / 2, w, h, 40, RC.paper);
+    rc.beginPath(); rc.arc(-w / 2 + 82, 0, 52, 0, Math.PI * 2); rc.fillStyle = RC.butter; rc.fill(); rc.lineWidth = 6; rc.strokeStyle = RC.ink; rc.stroke();
+    rc.font = `64px ${FONT.e}`; rc.textAlign = 'center'; rc.textBaseline = 'middle'; rc.fillText(c.icon, -w / 2 + 82, 4);
+    drawText(c.title, -w / 2 + 160, -22, { size: 50, align: 'left', maxW: w - 190 });
+    drawText(c.sub, -w / 2 + 160, 36, { size: 34, w: 400, fam: FONT.h, align: 'left', fill: '#8A7A9C', maxW: w - 190 });
+    rc.restore(); rc.globalAlpha = 1;
+  }
+  function rMedal(x, y, k, t) {
+    if (k <= 0) return;
+    rc.save(); rc.translate(x, y); const s = ease.back(k); rc.scale(s, s); rc.rotate((1 - k) * -1.4 + Math.sin(t * 2.2) * .06);
+    rc.lineJoin = 'round'; rc.lineWidth = 6; rc.strokeStyle = RC.ink;
+    [[RC.pink, -1], [RC.lav, 1]].forEach(([col, side]) => { rc.beginPath(); rc.moveTo(side * 12, -40); rc.lineTo(side * 52, -140); rc.lineTo(side * 18, -150); rc.lineTo(side * -14, -52); rc.closePath(); rc.fillStyle = col; rc.fill(); rc.stroke(); });
+    rc.beginPath(); rc.arc(0, 0, 76, 0, Math.PI * 2); rc.fillStyle = RC.butter; rc.fill(); rc.lineWidth = 8; rc.stroke();
+    rc.setLineDash([10, 10]); rc.beginPath(); rc.arc(0, 0, 56, 0, Math.PI * 2); rc.strokeStyle = '#fff'; rc.lineWidth = 5; rc.stroke(); rc.setLineDash([]);
+    shape2('star', 0, 4, 80, '#fff', 0);
+    rc.globalAlpha = .55 + .45 * Math.sin(t * 5); shape2('spark', 52, -52, 36, '#fff', t); rc.globalAlpha = 1;
+    rc.restore();
+  }
+  function statsTiles(t, t0) {
+    const tiles = [['📏 ระยะทาง', `${(run.dist / 1000).toFixed(2)} กม.`, RC.mint], ['⏱️ เวลา', fmtTime(run.total), RC.butter], ['⚡ เพซเฉลี่ย', `${fmtPace(run.total / (run.dist / 1000))}/กม.`, RC.pink]];
+    const gap = 18, w = (SAFE.r - SAFE.l - gap * 2) / 3, y = 1356, h = 210;
+    tiles.forEach(([label, val, col], i) => {
+      const k = prog(t, t0 + i * .15, t0 + .4 + i * .15); if (k <= 0) return;
+      const x = SAFE.l + i * (w + gap);
+      rc.save(); rc.translate(x + w / 2, y + h / 2); const s = ease.back(k); rc.scale(s, s); rc.translate(-(x + w / 2), -(y + h / 2));
+      rCard(x, y, w, h, 36, col, 6);
+      drawText(label, x + w / 2, y + 56, { size: 32, w: 400, fam: FONT.b, maxW: w - 30 });
+      drawText(val, x + w / 2, y + 138, { size: 54, maxW: w - 30 });
+      rc.restore();
+    });
+  }
+
+  /* ---------- scenes ---------- */
+  function drawHook(t, lt, len) {
+    const P = reel.plan.P, zoom = 1 + .14 * ease.out(prog(lt, 0, .28)) - .05 * prog(lt, .28, len);
+    if (!drawVideoIn(footVideo(), 0, 0, RW, RH, zoom)) cartoonScene(t, 'hook', zoom);
+    shade();
+    const kTag = prog(lt, .06, .36);
+    if (kTag > 0) {
+      rc.save(); rc.translate(SCX, 470); const s = ease.back(kTag); rc.scale(s, s); rc.rotate(-.05);
+      rr(-120, -50, 240, 100, 50); rc.fillStyle = RC.lav; rc.fill(); rc.lineWidth = 8; rc.strokeStyle = RC.ink; rc.stroke();
+      drawText(P.hook.tag, 0, 4, { size: 64, fill: '#fff', stroke: RC.ink, lw: 12 });
+      rc.restore();
+    }
+    P.hook.lines.forEach((ln, i) => {
+      const k = prog(lt, .14 + i * .12, .52 + i * .12); if (k <= 0) return;
+      rc.save(); rc.translate(SCX, 620 + i * 132); rc.rotate(-.04 + Math.sin(t * 3 + i) * .012); const s = ease.back(k); rc.scale(s, s);
+      drawText(ln, 0, 0, { size: 112, fill: i ? RC.butter : '#fff', stroke: RC.ink, lw: 22, shadow: true, maxW: 860 });
+      rc.restore();
+    });
+    rBurst(t, .3, SCX, 680, 11, { n: 18, spread: 440, kinds: ['spark', 'star', 'heart'] });
+    if (lt > .4) twinkles(t, SAFE.l, 380, SAFE.r - SAFE.l, 120, 5, 4);
+    // Joke line in its own pill under the title, clear of the runner below
+    const kj = prog(lt, .5, .8), joke = HOOK_JOKES[reel.preset];
+    if (kj > 0 && joke) {
+      rc.save(); rc.translate(SCX, 905); rc.rotate(.02); const s = ease.back(kj); rc.scale(s, s);
+      const w = Math.min(860, textWidth(joke, 40, 400, FONT.h) + 64);
+      rr(-w / 2 + 6, -34, w, 76, 38); rc.fillStyle = 'rgba(91,69,112,.25)'; rc.fill();
+      rr(-w / 2, -40, w, 76, 38); rc.fillStyle = '#fff'; rc.fill(); rc.lineWidth = 6; rc.strokeStyle = RC.ink; rc.stroke();
+      drawText(joke, 0, -1, { size: 40, w: 400, fam: FONT.h, maxW: w - 44 });
+      rc.restore();
+    }
+    const fl = 1 - prog(lt, 0, .22); if (fl > 0) { rc.fillStyle = `rgba(255,253,248,${fl})`; rc.fillRect(0, 0, RW, RH); }
+  }
+  function drawEnter(t, lt, len) {
+    bgDots(t);
+    const cs = crewState(t), zoom = 1.55 - .3 * ease.inOut(prog(lt, 0, 1.4));
+    drawMapCard(RECT.mapFull, t, zoom, cs, { running: isMoving(t), tags: lt > .7, drop: c => prog(lt, c.i * .14, .66 + c.i * .14) });
+    rDistHud(t, cs, prog(lt, .5, .9), 'full');
+    // QUEST START lives in the empty strip under the map, so it never covers the runners.
+    const goal = `🎯 ${goalKm().toFixed(1)} กม.${place() ? ' · 📍 ' + place() : ''} · รางวัล: ข้าว 1 จาน 🍚`;
+    rBanner('QUEST START!', SCX, 1408, 108, RC.butter, prog(lt, .6, 1), 0, goal);
+    rBurst(t, reel.plan.S.enter[0] + .65, SCX, 1408, 21, { n: 20, spread: 380 });
+  }
+  function drawAdv(t, lt, len) {
+    bgDots(t);
+    const plan = reel.plan, cs = crewState(t), moving = isMoving(t);
+    drawMapCard(RECT.mapHyb, t, 1.3, cs, { running: moving, speed: moving ? .7 : 0 });
+    drawFootCard(t, lt);
+    rDistHud(t, cs, prog(lt, 0, .3), 'mini');
+    // Banners sit on the seam between the map and the footage so they never cover the runners.
+    const top = (RECT.mapHyb.y + RECT.mapHyb.h + RECT.footHyb.y) / 2;
+    const kU = prog(t, plan.unlockAt, plan.unlockAt + .35), kUo = prog(t, plan.unlockAt + 1, plan.unlockAt + 1.25);
+    rBanner('SIDE QUEST UNLOCKED!', SCX, top, 76, RC.mint, kU, kUo);
+    if (kU > 0 && kUo < 1) reel.blocks.push({ x: SAFE.l, y: top - 60, w: SAFE.r - SAFE.l, h: 120 });
+    rBurst(t, plan.unlockAt + .05, SCX, top, 41, { n: 16, spread: 380, kinds: ['star', 'spark', 'dot'] });
+    plan.events.forEach((m, i) => {
+      const kIn = prog(t, m.t - .2, m.t + .15), kOut = prog(t, m.t + m.hold, m.t + m.hold + .25);
+      if (kIn <= 0 || kOut >= 1) return;
+      rEventCard(m, kIn, kOut, SCX, top);
+      if (kIn > .6) rBurst(t, m.t, SCX - 250, top, 50 + i, { n: 10, spread: 200, kinds: m.kind === 'closed' ? ['dot'] : ['spark', 'heart', 'star'], life: 1 });
+      const lines = m.card.talk.slice(0, plan.TL.lines), per = m.hold / lines.length;
+      lines.forEach(([sp, txt], j) => {
+        const a = m.t + j * per, b = a + per; if (t < a || t > b + .05) return;
+        const pos = reel.scr[sp.id] || reel.scr.me; if (!pos) return;
+        rBubble(pos.x, pos.y - pos.size * 1.18, txt, sp.color, prog(t, a, a + .2), pos.y + 12);
+      });
+    });
+  }
+  function drawFin(t, lt, len) {
+    bgDots(t);
+    const plan = reel.plan, fa = plan.finishAt, cs = crewState(t);
+    const zoom = 1.25 + .2 * ease.inOut(prog(t, fa - 1.2, fa)), sprint = t >= fa - 1 && t < fa;
+    drawMapCard(RECT.mapFull, t, zoom, cs, { running: t < fa, speed: sprint ? 1.4 : 0 });
+    // Distance box makes way for FINISH! at the top; the sprint line uses the strip under the map.
+    rDistHud(t, cs, 1 - prog(t, fa - .1, fa + .15), 'full');
+    if (sprint) rBanner('ฮึบบบ! ขาเป็นวุ้นแล้ว 💨', SCX, 1440, 70, RC.pink, prog(t, fa - 1, fa - .8), prog(t, fa - .15, fa));
+    rBanner('FINISH!', SCX, 238, 150, RC.butter, prog(t, fa + .05, fa + .4));
+    rBurst(t, fa, SCX, 300, 31, { n: 46, spread: 560, gravity: 620, kinds: ['conf', 'heart', 'star', 'spark'], life: 2 });
+    rMedal(RECT.mapFull.x + RECT.mapFull.w - 120, RECT.mapFull.y + 170, prog(t, fa + .75, fa + 1.15), t);
+    statsTiles(t, fa + .35);
+  }
+  function drawEnd(t, lt, len) {
+    const P = reel.plan.P, zoom = 1 + .04 * prog(lt, 0, len) + .1 * ease.inOut(prog(lt, len - .35, len));
+    const v = vSelfie.src && vSelfie.readyState >= 2 ? vSelfie : footVideo();
+    if (!drawVideoIn(v, 0, 0, RW, RH, zoom)) cartoonScene(t, 'end', zoom);
+    shade();
+    const fade = 1 - prog(lt, len - .3, len);
+    rc.globalAlpha = fade;
+    P.end.forEach((ln, i) => {
+      const k = prog(lt, .1 + i * .12, .5 + i * .12); if (k <= 0) return;
+      rc.save(); rc.translate(SCX, 540 + i * 128); rc.rotate(-.04); const s = ease.back(k); rc.scale(s, s);
+      drawText(ln, 0, 0, { size: 108, fill: i ? RC.pink : '#fff', stroke: RC.ink, lw: 22, shadow: true, maxW: 860 });
+      rc.restore(); rc.globalAlpha = fade;
+    });
+    const kc = prog(lt, .3, .7);
+    if (kc > 0) {
+      const x = SAFE.l + 20, y = 1180, w = SAFE.r - SAFE.l - 40, h = 300, cr = reel.plan.crew;
+      rc.save(); rc.translate(x + w / 2, y + h / 2); const s = ease.back(kc); rc.scale(s, s); rc.translate(-(x + w / 2), -(y + h / 2));
+      rCard(x, y, w, h, 44, RC.paper);
+      cr.forEach((p, i) => {
+        const fx = x + 70 + i * 62, fy = y + 70, img = reel.faces[p.id];
+        rc.beginPath(); rc.arc(fx, fy, 36, 0, Math.PI * 2); rc.fillStyle = '#fff'; rc.fill(); rc.lineWidth = 6; rc.strokeStyle = p.color; rc.stroke();
+        if (img) { rc.save(); rc.beginPath(); rc.arc(fx, fy, 32, 0, Math.PI * 2); rc.clip(); const k = Math.max(64 / img.width, 64 / img.height); rc.drawImage(img, fx - img.width * k / 2, fy - img.height * k / 2, img.width * k, img.height * k); rc.restore(); }
+        else { rc.font = `40px ${FONT.e}`; rc.textAlign = 'center'; rc.textBaseline = 'middle'; rc.fillText(p.emoji, fx, fy + 2); }
+      });
+      const title = place() ? `📍 ${place()}` : 'RUN QUEST CLEAR!';
+      drawText(title, x + 90 + cr.length * 62, y + 72, { size: 40, align: 'left', maxW: w - 130 - cr.length * 62 });
+      drawText(`${(run.dist / 1000).toFixed(2)} กม. · ${fmtTime(run.total)} · ${fmtPace(run.total / (run.dist / 1000))}/กม.`, x + w / 2, y + 168, { size: 54, maxW: w - 60 });
+      const ate = stopList().filter(s => !s.closed).reduce((a, s) => a + s.kcal, 0);
+      const foot = `🔥 ~${kcalFor(run.dist / 1000)} kcal (ประมาณ)${run.avgHr ? ` · ❤️ ${run.avgHr} bpm` : ''}${ate ? ` · 😋 กินคืน ${ate}` : ''}`;
+      drawText(foot, x + w / 2, y + 242, { size: 32, w: 400, fam: FONT.b, fill: '#8A7A9C', maxW: w - 60 });
+      rc.restore();
+    }
+    rc.globalAlpha = 1;
+    rBurst(t, reel.plan.S.end[0] + .2, SCX, 640, 61, { n: 16, spread: 420, kinds: ['heart', 'spark'] });
+    const fl = prog(lt, len - .3, len); if (fl > 0) { rc.fillStyle = `rgba(255,253,248,${fl})`; rc.fillRect(0, 0, RW, RH); }
+  }
+  const SCENE_DRAW = { hook: drawHook, enter: drawEnter, adv: drawAdv, fin: drawFin, end: drawEnd };
+  function drawScene(id, t) {
+    const [a, b] = reel.plan.S[id];
+    rc.save(); SCENE_DRAW[id](t, t - a, b - a); rc.restore();
+  }
+  function renderFrame(t) {
+    rc.setTransform(1, 0, 0, 1, 0, 0); rc.globalAlpha = 1; reel.blocks = [];
+    if (!reel.plan || !reel.mapImg) {
+      bgDots(0); drawText('กำลังเตรียม Reel...', SCX, RH / 2, { size: 64 }); return;
+    }
+    const sc = sceneAt(t), TR = .4;
+    if (sc.idx > 0 && t < sc.a + TR) {
+      // Circle wipe from the previous scene into the next one
+      drawScene(SCENE_ORDER[sc.idx - 1], sc.a - 1e-3);
+      const k = ease.inOut(prog(t, sc.a, sc.a + TR)), r = Math.max(1, k * 1250), cy = RH * .46;
+      rc.save(); rc.beginPath(); rc.arc(SCX, cy, r, 0, Math.PI * 2); rc.clip(); drawScene(sc.id, t); rc.restore();
+      if (k < 1) { rc.beginPath(); rc.arc(SCX, cy, r, 0, Math.PI * 2); rc.lineWidth = 28; rc.strokeStyle = RC.pink; rc.stroke(); rc.lineWidth = 8; rc.strokeStyle = RC.ink; rc.stroke(); }
+    } else drawScene(sc.id, t);
+    if ($('#inWatermark').checked) {
+      rc.globalAlpha = .75; drawText('🏃 Run Quest', SAFE.l + 10, RH - 46, { size: 30, align: 'left', fill: '#fff', stroke: RC.ink, lw: 6, maxW: 300 }); rc.globalAlpha = 1;
+    }
+  }
+
+  /* ---------- sound cues (shared by preview and export) ---------- */
+  const sfxPitch = () => ({ cute: 1, funny: 1.12, epic: .88 })[reel.plan ? reel.plan.P.sfx : 'cute'] || 1;
+  const REEL_SFX = {
+    start: () => [523, 659, 784, 1047].forEach((f, i) => tone(f * sfxPitch(), .12, 'square', i * .07, .06)),
+    whoosh: () => tone(260, .45, 'triangle', 0, .09, 1300),
+    jump: () => tone(380 * sfxPitch(), .2, 'sine', 0, .12, 900 * sfxPitch()),
+    quest: () => [784, 988, 1175].forEach((f, i) => tone(f * sfxPitch(), .14, 'square', i * .09, .06)),
+    unlock: () => [659, 831, 988, 1319].forEach((f, i) => tone(f * sfxPitch(), .12, 'triangle', i * .06, .08)),
+    coin: () => { tone(988 * sfxPitch(), .08, 'square', 0, .06); tone(1319 * sfxPitch(), .25, 'square', .08, .06); },
+    surprise: () => tone(300 * sfxPitch(), .35, 'sawtooth', 0, .05, 900 * sfxPitch()),
+    bye: () => [880, 660].forEach((f, i) => tone(f, .18, 'sine', i * .14, .08)),
+    achieve: () => [784, 988, 1175, 1568].forEach((f, i) => tone(f * sfxPitch(), .16, 'square', i * .08, .06)),
+    celebrate: () => [523, 523, 523, 698, 880, 1047].forEach((f, i) => tone(f * sfxPitch(), i > 3 ? .4 : .12, 'square', i * .11, .06)),
+    step: () => tone(150 + Math.random() * 40, .05, 'triangle', 0, .045),
+    cute: () => [1047, 1319].forEach((f, i) => tone(f * sfxPitch(), .2, 'sine', i * .12, .08)),
+  };
+  function fireCues(a, b) { reel.plan.cues.forEach(([t, s]) => { if (t > a && t <= b && REEL_SFX[s]) REEL_SFX[s](); }); }
+
+  /* ---------- real footage: which clip plays when ---------- */
+  const mediaGain = new Map();
+  function trimRange(v) {
+    const dur = isFinite(v.duration) && v.duration > 0 ? v.duration : 10, s = Math.max(0, Math.min(dur - .2, parseFloat($('#inTrimS').value) || 0));
+    const e = parseFloat($('#inTrimE').value); const end = e > s + .2 ? Math.min(dur || e, e) : dur;
+    return { s, span: Math.max(.3, end - s) };
+  }
+  function videoWant(t) {
+    const sc = sceneAt(t), lt = t - sc.a, fv = footVideo();
+    const at = (v, off) => { const r = trimRange(v); return { v, time: r.s + ((off + lt) % r.span) }; };
+    if (sc.id === 'hook' && fv) return at(fv, 0);
+    if (sc.id === 'adv' && fv) return at(fv, trimRange(fv).span * .35);
+    if (sc.id === 'end') {
+      if (vSelfie.src) return { v: vSelfie, time: Math.min(lt, Math.max(0, (vSelfie.duration || 1) - .05)) };
+      if (fv) return at(fv, trimRange(fv).span * .68);
+    }
+    return null;
+  }
+  function syncVideos(t, playing) {
+    const want = videoWant(t);
+    [footVideo(), vSelfie.src ? vSelfie : null].forEach(v => {
+      if (!v) return;
+      if (!want || want.v !== v) { if (!v.paused) v.pause(); return; }
+      if (playing) { if (Math.abs(v.currentTime - want.time) > .35) v.currentTime = want.time; if (v.paused) v.play().catch(() => {}); }
+      else { if (!v.paused) v.pause(); if (Math.abs(v.currentTime - want.time) > .04) v.currentTime = want.time; }
+    });
+  }
+  function routeVideoAudio() {
+    const on = $('#inVidAudio').checked;
+    [footVideo(), vSelfie.src ? vSelfie : null].forEach(v => {
+      if (!v) return;
+      if (on) {
+        audio();
+        if (!mediaGain.has(v)) { try { const src = ac.createMediaElementSource(v), g = ac.createGain(); src.connect(g).connect(busMaster); mediaGain.set(v, g); } catch (e) { /* already connected */ } }
+        if (mediaGain.has(v)) mediaGain.get(v).gain.value = 1;
+        v.muted = false;
+      } else { if (mediaGain.has(v)) mediaGain.get(v).gain.value = 0; v.muted = true; }
+    });
+  }
+  function muteAllVideo() { mediaGain.forEach(g => { g.gain.value = 0; }); [vFoot, vSelfie, $('#pipVid')].forEach(v => { v.muted = true; }); }
+
+  /* ---------- assets ---------- */
+  const loadImg = src => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+  async function prepareReel() {
+    const ver = ++reel.ver;
+    try { await Promise.all(['700 40px Mali', '400 40px Sriracha', '400 40px Itim'].map(f => document.fonts.load(f, 'กขคabc'))); } catch (e) { /* fall back to system fonts */ }
+    const markup = buildMap({ ratio: RECT.mapFull.h / RECT.mapFull.w, noChars: true, out: true, minimal: true });
+    const W = mapW, H = mapH, shapeCopy = shape.map(p => ({ ...p }));
+    const pw = 1600, ph = Math.round(pw * H / W);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${ph}" viewBox="0 0 ${W} ${H}">${markup}</svg>`;
+    let mapCanvas = null;
+    try {
+      const img = await loadImg('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg));
+      mapCanvas = document.createElement('canvas'); mapCanvas.width = pw; mapCanvas.height = ph;
+      mapCanvas.getContext('2d').drawImage(img, 0, 0, pw, ph);
+    } catch (e) { setReelStatus('วาดแผนที่ไม่สำเร็จ ลองรีเฟรชหน้า', 'err'); return; }
+    const faces = {};
+    for (const p of crew()) if (p.face) { try { faces[p.id] = await loadImg(p.face); } catch (e) { /* use emoji */ } }
+    if (ver !== reel.ver) return;
+    Object.assign(reel, { W, H, shape: shapeCopy, mapImg: mapCanvas, faces });
+    buildReelPlan();
+    reel.t = Math.min(reel.t, reel.dur - 1 / FPS);
+    updateReelUi(); syncVideos(reel.t, false); renderFrame(reel.t);
+  }
+
+  /* ---------- playback ---------- */
+  function reelPlay(fromStart, onEnd) {
+    if (!reel.plan) return;
+    audio(); routeVideoAudio();
+    if (fromStart || reel.t >= reel.dur - 2 / FPS) reel.t = 0;
+    reel.playing = true; reel.onEnd = onEnd || null;
+    reel.startAt = performance.now() - reel.t * 1000; reel.lastT = reel.t - 1e-6;
+    cancelAnimationFrame(reel.raf); reel.raf = requestAnimationFrame(reelTick);
+    setPlayBtn();
+  }
+  function reelTick(now) {
+    if (!reel.playing) return;
+    const real = (now - reel.startAt) / 1000, D = reel.dur, t = Math.min(real, D - 1 / FPS);
+    fireCues(reel.lastT, t); reel.lastT = t; reel.t = t;
+    syncVideos(t, true); renderFrame(t); updateScrub(t);
+    if (real >= D) { reelStop(true); return; }
+    reel.raf = requestAnimationFrame(reelTick);
+  }
+  function reelStop(ended) {
+    const wasPlaying = reel.playing;
+    reel.playing = false; cancelAnimationFrame(reel.raf);
+    [vFoot, vSelfie, $('#pipVid')].forEach(v => { if (!v.paused && state.mode === 'reel') v.pause(); });
+    setPlayBtn();
+    if (ended && wasPlaying && reel.onEnd) { const f = reel.onEnd; reel.onEnd = null; f(); }
+  }
+  function setPlayBtn() { const b = $('#btnReelPlay'); b.querySelector('.e2').textContent = reel.playing ? '⏸' : '▶'; b.querySelector('.l').textContent = reel.playing ? 'หยุด' : 'พรีวิว'; }
+  function updateScrub(t) {
+    const s = $('#reelScrub'); s.max = reel.dur; s.value = t;
+    $('#reelTime').textContent = `${t.toFixed(2)} / ${reel.dur.toFixed(2)} วิ`;
+    if (reel.plan) { const sc = sceneAt(t), [name, lay] = SCENE_INFO[sc.id]; $('#reelScene').textContent = `ฉาก ${sc.idx + 1}/5 · ${name} · เลย์เอาต์ ${lay}`; }
+  }
+  function setReelStatus(text, kind) { const s = $('#reelStatus'); s.hidden = !text; s.textContent = text || ''; s.className = 'status' + (kind ? ' ' + kind : ''); }
+  function updateReelUi() {
+    const P = REEL_PRESETS[reel.preset], plan = reel.plan;
+    document.querySelectorAll('#durSeg button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.dur === reel.dur)));
+    const ev = plan ? plan.events.map(m => `${m.card.icon} ${m.card.title}`).join(' · ') : '';
+    const notes = [];
+    if (run.source === 'demo') notes.push('ตอนนี้ใช้ข้อมูลวิ่งตัวอย่าง ใส่ GPX ของคุณได้ในส่วนที่ 1');
+    if (!run.hr) notes.push('ไฟล์นี้ไม่มีข้อมูลหัวใจ จะแสดงเป็น —');
+    if (!footVideo()) notes.push('ยังไม่มีคลิปจริง จะใช้ฉากการ์ตูนแทน');
+    $('#presetHint').textContent = `${P.hint}${ev ? ` · เหตุการณ์ในคลิป: ${ev}` : ''}${notes.length ? ' · ' + notes.join(' · ') : ''}`;
+    updateScrub(reel.t);
+  }
+  function rebuildPlan() { if (!reel.mapImg) return; reelStop(); buildReelPlan(); reel.t = Math.min(reel.t, reel.dur - 1 / FPS); updateReelUi(); syncVideos(reel.t, false); renderFrame(reel.t); }
+
+  /* ---------- export: canvas stream + sound bus → MediaRecorder ---------- */
+  function probeVideo(blob) {
+    return new Promise(res => {
+      const v = document.createElement('video'), url = URL.createObjectURL(blob); let done = false;
+      const finish = () => { if (done) return; done = true; res({ w: v.videoWidth, h: v.videoHeight, dur: v.duration }); };
+      v.preload = 'metadata'; v.muted = true;
+      v.onloadedmetadata = () => {
+        if (!isFinite(v.duration)) { v.ontimeupdate = () => { v.ontimeupdate = null; finish(); }; v.currentTime = 1e7; } else finish();
+      };
+      v.onerror = () => { done = true; res({ w: 0, h: 0, dur: NaN }); };
+      setTimeout(finish, 5000);
+      v.src = url;
+    });
+  }
+  const inFrame = () => { try { return window.top !== window.self; } catch (e) { return true; } };
+  function saveBlob(blob, name) {
+    const url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    return url;
+  }
+  // Exact export: encode every frame with a fixed timestamp (WebCodecs) and pack it as MP4.
+  // A 15 s reel is always exactly 450 frames. Sound is rendered offline from the same cue list.
+  let muxP = null;
+  function loadMuxer() {
+    if (window.Mp4Muxer) return Promise.resolve(window.Mp4Muxer);
+    return muxP || (muxP = new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.js';
+      s.onload = () => window.Mp4Muxer ? res(window.Mp4Muxer) : rej(new Error('mp4-muxer'));
+      s.onerror = () => { muxP = null; rej(new Error('โหลดตัวรวมไฟล์ MP4 ไม่ได้ (ต้องต่ออินเทอร์เน็ต)')); };
+      document.head.appendChild(s);
+    }));
+  }
+  async function seekFor(t) {
+    const w = videoWant(t);
+    [footVideo(), vSelfie.src ? vSelfie : null].forEach(v => { if (v && !v.paused) v.pause(); });
+    if (!w) return;
+    const v = w.v;
+    if (Math.abs(v.currentTime - w.time) < 1e-3 && v.readyState >= 2) return;
+    await new Promise(r => {
+      let ok = false;
+      const done = () => { if (ok) return; ok = true; v.removeEventListener('seeked', done); r(); };
+      v.addEventListener('seeked', done); v.currentTime = w.time; setTimeout(done, 1500);
+    });
+  }
+  async function mixFootageAudio(oc, D) {
+    const bufs = new Map();
+    const getBuf = async v => {
+      if (!v.__file) return null;
+      if (!bufs.has(v)) { let b = null; try { b = await oc.decodeAudioData(await v.__file.arrayBuffer()); } catch (e) { /* clip has no audio */ } bufs.set(v, b); }
+      return bufs.get(v);
+    };
+    const step = 1 / FPS; let t = 0;
+    while (t < D - 1e-6) {
+      const w = videoWant(t); if (!w) { t += step; continue; }
+      let t2 = t + step;
+      while (t2 < D - 1e-6) { const w2 = videoWant(t2); if (!w2 || w2.v !== w.v || Math.abs(w2.time - (w.time + (t2 - t))) > .02) break; t2 += step; }
+      const buf = await getBuf(w.v);
+      if (buf && w.time < buf.duration) { const src = oc.createBufferSource(); src.buffer = buf; src.connect(oc.destination); src.start(t, w.time, Math.min(t2 - t, buf.duration - w.time)); }
+      t = t2;
+    }
+  }
+  async function renderReelAudio(D) {
+    // Whole AAC blocks (1024 samples) that fit inside D, so the sound never makes the file longer than the video.
+    const sr = 48000, oc = new OfflineAudioContext(2, Math.floor(D * sr / 1024) * 1024, sr);
+    offAudio = oc;
+    try { reel.plan.cues.forEach(([t, s]) => { offAt = t; if (REEL_SFX[s]) REEL_SFX[s](); }); } finally { offAudio = null; }
+    if ($('#inVidAudio').checked) await mixFootageAudio(oc, D);
+    return oc.startRendering();
+  }
+  async function exportExact(progress) {
+    const Mux = await loadMuxer(), D = reel.dur, N = Math.round(D * FPS);
+    let vcfg = null;
+    for (const codec of ['avc1.640029', 'avc1.4d0029', 'avc1.42e029', 'avc1.640028']) {
+      const c = { codec, width: RW, height: RH, bitrate: 12e6, framerate: FPS, avc: { format: 'avc' } };
+      try { if ((await VideoEncoder.isConfigSupported(c)).supported) { vcfg = c; break; } } catch (e) { /* try next */ }
+    }
+    if (!vcfg) throw new Error('เครื่องนี้ไม่มีตัวเข้ารหัส H.264');
+    progress('กำลังเตรียมเสียง...');
+    const abuf = await renderReelAudio(D);
+    const acfg = { codec: 'mp4a.40.2', sampleRate: 48000, numberOfChannels: 2, bitrate: 160000 };
+    let hasAudio = false;
+    try { hasAudio = !!window.AudioEncoder && (await AudioEncoder.isConfigSupported(acfg)).supported; } catch (e) { hasAudio = false; }
+    const target = new Mux.ArrayBufferTarget();
+    const muxer = new Mux.Muxer({ target, fastStart: 'in-memory', video: { codec: 'avc', width: RW, height: RH, frameRate: FPS }, ...(hasAudio ? { audio: { codec: 'aac', numberOfChannels: 2, sampleRate: 48000 } } : {}) });
+    let encErr = null;
+    const venc = new VideoEncoder({ output: (c, m) => muxer.addVideoChunk(c, m), error: e => { encErr = e; } });
+    venc.configure(vcfg);
+    for (let i = 0; i < N; i++) {
+      if (encErr) throw encErr;
+      const t = i / FPS;
+      await seekFor(t);
+      renderFrame(t);
+      const frame = new VideoFrame(reelCanvas, { timestamp: Math.round(i * 1e6 / FPS), duration: Math.round(1e6 / FPS) });
+      venc.encode(frame, { keyFrame: i % (FPS * 2) === 0 }); frame.close();
+      while (venc.encodeQueueSize > 6) await new Promise(r => setTimeout(r, 4));
+      if (i % 5 === 0) { progress(`กำลังสร้างวิดีโอ ${Math.round(i / N * 100)}% · เฟรม ${i}/${N}`); await new Promise(r => setTimeout(r, 0)); }
+    }
+    await venc.flush(); venc.close();
+    if (hasAudio) {
+      const aenc = new AudioEncoder({ output: (c, m) => muxer.addAudioChunk(c, m), error: e => { encErr = e; } });
+      aenc.configure(acfg);
+      const sr = 48000, L = abuf.length, CH = 4096, c0 = abuf.getChannelData(0), c1 = abuf.getChannelData(1);
+      for (let off = 0; off < L; off += CH) {
+        const n = Math.min(CH, L - off), data = new Float32Array(n * 2);
+        data.set(c0.subarray(off, off + n), 0); data.set(c1.subarray(off, off + n), n);
+        const ad = new AudioData({ format: 'f32-planar', sampleRate: sr, numberOfFrames: n, numberOfChannels: 2, timestamp: Math.round(off / sr * 1e6), data });
+        aenc.encode(ad); ad.close();
+      }
+      await aenc.flush(); aenc.close();
+    }
+    if (encErr) throw encErr;
+    muxer.finalize();
+    return { blob: new Blob([target.buffer], { type: 'video/mp4' }), how: `เข้ารหัสทีละเฟรม ${N} เฟรม (${vcfg.codec}${hasAudio ? ' + AAC' : ', ไม่มีเสียง: เครื่องนี้ไม่รองรับ AAC'})` };
+  }
+  // Fallback for browsers without WebCodecs: record the live preview. Length can drift by a fraction of a second.
+  async function exportRealtime(progress) {
+    if (!reelCanvas.captureStream || !window.MediaRecorder) throw new Error('เบราว์เซอร์นี้ export ไม่ได้ ใช้ Chrome หรือ Edge บนคอม');
+    const types = ['video/mp4;codecs=avc1.42E028,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+    const mime = types.find(m => MediaRecorder.isTypeSupported(m));
+    if (!mime) throw new Error('เบราว์เซอร์นี้ไม่มีตัวเข้ารหัสวิดีโอที่ใช้ได้');
+    audio(); routeVideoAudio();
+    if (!recDest) { recDest = ac.createMediaStreamDestination(); busMaster.connect(recDest); }
+    reel.t = 0; syncVideos(0, false); await new Promise(r => setTimeout(r, 350)); renderFrame(0);
+    const vs = reelCanvas.captureStream(FPS);
+    const rec = new MediaRecorder(new MediaStream([...vs.getVideoTracks(), ...recDest.stream.getAudioTracks()]), { mimeType: mime, videoBitsPerSecond: 12e6, audioBitsPerSecond: 160e3 });
+    const chunks = []; rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+    const stopped = new Promise(r => { rec.onstop = r; });
+    await new Promise(r => { rec.onstart = r; rec.start(250); });
+    const tick = setInterval(() => progress(`กำลังอัดแบบเรียลไทม์ ${reel.t.toFixed(1)} / ${reel.dur} วิ · อย่าสลับแท็บ`), 200);
+    reelPlay(true, () => { if (rec.state !== 'inactive') rec.stop(); });
+    await stopped; clearInterval(tick); vs.getTracks().forEach(tr => tr.stop());
+    const type = rec.mimeType || mime;
+    return { blob: new Blob(chunks, { type }), how: 'อัดแบบเรียลไทม์ (ความยาวอาจคลาดเคลื่อนเล็กน้อย)' };
+  }
+  async function exportReel() {
+    if (reel.exporting) return;
+    if (!reel.plan) { setReelStatus('รอให้ Reel เตรียมเสร็จก่อน', 'warn'); return; }
+    reel.exporting = true; reelStop();
+    const ids = ['btnReelExport', 'btnReelPlay', 'btnReelReplay', 'btnReelCover'];
+    ids.forEach(id => { $('#' + id).disabled = true; }); $('#reelScrub').disabled = true;
+    const progress = msg => setReelStatus(msg, '');
+    try {
+      let res = null, note = '';
+      if (window.VideoEncoder && window.VideoFrame && window.OfflineAudioContext) {
+        try { res = await exportExact(progress); } catch (e) { note = ` (โหมดทีละเฟรมใช้ไม่ได้: ${e.message || e})`; }
+      }
+      if (!res) res = await exportRealtime(progress);
+      const type = res.blob.type, ext = type.includes('mp4') ? 'mp4' : 'webm', info = await probeVideo(res.blob);
+      const url = saveBlob(res.blob, `run-quest-reel-${reel.dur}s.${ext}`);
+      const dur = isFinite(info.dur) ? info.dur.toFixed(2) + ' วิ' : 'อ่านความยาวไม่ได้';
+      setReelStatus(`ได้ไฟล์ ${ext.toUpperCase()} · ${info.w}×${info.h} · ${dur} · ${(res.blob.size / 1e6).toFixed(1)} MB · ${res.how}${note}${inFrame() ? ' · หน้านี้เปิดผ่านลิงก์ claude.ai ซึ่งดาวน์โหลดไม่ได้ ให้เปิดไฟล์ในเครื่องด้วย Chrome แล้ว export ใหม่' : ' · ดูในโฟลเดอร์ดาวน์โหลด'}${ext === 'webm' ? ' · ถ้าแอปตัดต่อเปิด WEBM ไม่ได้ ให้แปลงเป็น MP4 ก่อน' : ''}`, '');
+      const out = $('#reelOut'); out.hidden = false; out.innerHTML = '';
+      const pv = document.createElement('video'); pv.controls = true; pv.playsInline = true; pv.src = url; out.appendChild(pv);
+    } catch (e) {
+      setReelStatus(`Export ไม่สำเร็จ: ${e.message || e}`, 'err');
+    } finally {
+      reel.exporting = false;
+      ids.forEach(id => { $('#' + id).disabled = false; }); $('#reelScrub').disabled = false;
+      reel.t = 0; syncVideos(0, false); renderFrame(0); updateScrub(0);
+    }
+  }
+  function exportCover() {
+    if (!reel.plan) return;
+    reelStop(); const keep = reel.t; syncVideos(reel.plan.coverT, false);
+    setTimeout(() => {
+      renderFrame(reel.plan.coverT);
+      reelCanvas.toBlob(b => {
+        if (!b) { setReelStatus('สร้างภาพปกไม่ได้', 'err'); return; }
+        saveBlob(b, `run-quest-cover-${reel.dur}s.png`);
+        setReelStatus(`ได้ภาพปก PNG 1080×1920${inFrame() ? ' · ลิงก์ claude.ai ดาวน์โหลดไม่ได้ ให้เปิดไฟล์ในเครื่อง' : ' · ดูในโฟลเดอร์ดาวน์โหลด'}`, '');
+        reel.t = keep; syncVideos(keep, false); renderFrame(keep);
+      }, 'image/png');
+    }, 300);
+  }
+
+  /* ---------- reel panel wiring ---------- */
+  $('#inPreset').innerHTML = Object.entries(REEL_PRESETS).map(([k, p]) => `<option value="${k}">${p.th}</option>`).join('');
+  document.querySelectorAll('#durSeg button').forEach(b => b.addEventListener('click', () => { reel.dur = +b.dataset.dur; rebuildPlan(); }));
+  $('#inPreset').addEventListener('change', e => { reel.preset = e.target.value; rebuildPlan(); });
+  $('#btnReelPlay').addEventListener('click', () => { if (reel.playing) reelStop(); else reelPlay(false); });
+  $('#btnReelReplay').addEventListener('click', () => reelPlay(true));
+  $('#btnReelGuide').addEventListener('click', () => { const c = $('#inGuide'); c.checked = !c.checked; stage.classList.toggle('show-guide', c.checked); });
+  $('#btnReelExport').addEventListener('click', exportReel);
+  $('#btnReelCover').addEventListener('click', exportCover);
+  $('#reelScrub').addEventListener('input', e => { reelStop(); reel.t = +e.target.value; syncVideos(reel.t, false); renderFrame(reel.t); updateScrub(reel.t); });
+  $('#inSfxVol').addEventListener('input', e => { state.sfxVol = +e.target.value; if (busSfx) busSfx.gain.value = state.sfxVol; });
+  $('#inVidAudio').addEventListener('change', () => { if (reel.playing) routeVideoAudio(); });
+  ['inTrimS', 'inTrimE', 'inFit', 'inWatermark'].forEach(id => $('#' + id).addEventListener('change', () => { if (!reel.playing) { syncVideos(reel.t, false); renderFrame(reel.t); } }));
+  [vFoot, vSelfie, $('#pipVid')].forEach(v => v.addEventListener('seeked', () => { if (state.mode === 'reel' && !reel.playing && !reel.exporting) renderFrame(reel.t); }));
+  function loadReelVideo(input, v, label) {
+    const f = input.files && input.files[0], st = $('#reelVidStatus'); if (!f) return;
+    st.hidden = false; st.className = 'status'; st.textContent = `กำลังโหลด${label}...`;
+    v.onerror = () => { st.className = 'status err'; st.textContent = `เปิด${label}ไม่ได้ ลองไฟล์ MP4 หรือ MOV`; };
+    const ready = () => {
+      const shapeTxt = v.videoHeight > v.videoWidth ? 'แนวตั้ง' : 'แนวนอน (จะครอปให้พอดี)';
+      st.className = 'status'; st.textContent = `ใส่${label}แล้ว · ${v.videoWidth}×${v.videoHeight} · ${shapeTxt} · ${isFinite(v.duration) ? v.duration.toFixed(1) + ' วิ' : 'ไม่ทราบความยาว'}`;
+      updateReelUi(); syncVideos(reel.t, false); renderFrame(reel.t);
+    };
+    v.onloadeddata = () => {
+      v.onloadeddata = null;
+      if (isFinite(v.duration)) { ready(); return; }
+      // Some WebM files don't store their length; seek to the end once so the browser works it out.
+      const fix = () => { if (!isFinite(v.duration)) return; v.removeEventListener('durationchange', fix); v.currentTime = 0; ready(); };
+      v.addEventListener('durationchange', fix); v.currentTime = 1e7;
+      setTimeout(() => { v.removeEventListener('durationchange', fix); if (!isFinite(v.duration)) { v.currentTime = 0; ready(); } }, 3000);
+    };
+    v.__file = f;
+    try { v.src = URL.createObjectURL(f); v.load(); } catch (e) { v.onerror(); }
+  }
+  $('#inReelVid').addEventListener('change', e => loadReelVideo(e.target, vFoot, 'คลิปวิ่ง'));
+  $('#inReelSelfie').addEventListener('change', e => loadReelVideo(e.target, vSelfie, 'คลิปตอนจบ'));
+  document.addEventListener('keydown', e => {
+    if (state.mode !== 'reel' || e.target.closest('input, textarea, select, button')) return;
+    if (e.key === ' ') { e.preventDefault(); if (reel.playing) reelStop(); else reelPlay(false); }
+  });
+
+  /* ---------- Wire up ---------- */
+  const toggleRec = () => { document.body.classList.toggle('rec'); later(buildMapAndPlace, 60); };
+  function buildMapAndPlace() { if (state.mode === 'reel') return; buildMap(); renderAll(0, false); }
+  function fullscreen() {
+    const el = document.body.classList.contains('rec') ? stage : document.documentElement;
+    try { const r = el.requestFullscreen && el.requestFullscreen(); if (r && r.catch) r.catch(() => {}); } catch (e) {}
+  }
+  const ACT = { q: () => showQuest(), 1: () => stretch(false), 2: () => runPlay(), 3: () => stretch(true), 4: () => showSummary() };
+  $('#kQ').addEventListener('click', ACT.q);
+  $('#k1').addEventListener('click', ACT[1]); $('#k2').addEventListener('click', ACT[2]);
+  $('#k3').addEventListener('click', ACT[3]); $('#k4').addEventListener('click', ACT[4]);
+  $('#btnHide').addEventListener('click', toggleRec);
+  $('#btnFull').addEventListener('click', fullscreen);
+  $('#btnReset').addEventListener('click', reset);
+  $('#tabLive').addEventListener('click', () => { if (state.mode !== 'live') setMode('live'); });
+  $('#tabDemo').addEventListener('click', () => { if (state.mode !== 'demo') setMode('demo'); });
+  $('#tabReel').addEventListener('click', () => { if (state.mode !== 'reel') setMode('reel'); });
+  $('#cover').addEventListener('click', playDemo);
+  $('#replay').addEventListener('click', playDemo);
+  $('#inName').addEventListener('input', () => { if (state.mode !== 'demo') reset(); });
+  $('#inMeFace').addEventListener('change', e => readFile(e.target.files[0], 'readAsDataURL', url => {
+    state.meFace = url; const pick = $('#mePick'), input = e.target; pick.innerHTML = `<img src="${url}" alt="">`; pick.appendChild(input); reset();
+  }));
+  ['inGoalDist', 'inGoalPace', 'inLaps', 'inWeight', 'inPathOn', 'inHideRoute'].forEach(id => $('#' + id).addEventListener('change', () => { if (state.mode !== 'demo') reset(); }));
+  $('#inBg').addEventListener('change', e => { stage.dataset.bg = e.target.value; });
+  $('#inSafe').addEventListener('change', e => { stage.classList.toggle('no-safe', !e.target.checked); later(buildMapAndPlace, 60); });
+  $('#inGuide').addEventListener('change', e => stage.classList.toggle('show-guide', e.target.checked));
+  $('#inSound').addEventListener('change', e => { state.sound = e.target.checked; });
+  $('#inMascot').addEventListener('change', e => stage.classList.toggle('no-mascot', !e.target.checked));
+  $('#inFrame').addEventListener('change', e => stage.classList.toggle('no-frame', !e.target.checked));
+  stage.addEventListener('dblclick', () => { if (!state.tracing) toggleRec(); });
+  document.addEventListener('keydown', e => {
+    if (state.mode !== 'live' || e.target.closest('input, textarea, select') || e.ctrlKey || e.metaKey || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (ACT[k]) ACT[k]();
+    else if (k === '0') reset();
+    else if (k === 'h') toggleRec();
+    else if (k === 'f') fullscreen();
+    else if (k === 'escape') closeSummary();
+    else return;
+    e.preventDefault();
+  });
+  // Redraw the map when its box changes shape (window resize, safe-zone toggle, recording mode).
+  let lastBox = '', roTimer = null;
+  if (window.ResizeObserver) new ResizeObserver(() => {
+    const b = mapSvg.getBoundingClientRect(), key = Math.round(b.width) + 'x' + Math.round(b.height);
+    if (key === lastBox) return; lastBox = key;
+    clearTimeout(roTimer); roTimer = setTimeout(() => { if (state.mode !== 'reel' && (!loopToken || !summaryEl)) { buildMap(); renderAll(0, false); } }, 120);
+  }).observe(mapSvg);
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const noise = document.getElementById('wobbleNoise'); let seed = 1;
+    setInterval(() => { seed = seed % 3 + 1; noise.setAttribute('seed', seed); }, 170);
+  }
+
+  friends = liveFriends; stops = liveStops;
+  renderFriendList();
+  renderStopList();
+  setMode('live');
+})();
+</script>
